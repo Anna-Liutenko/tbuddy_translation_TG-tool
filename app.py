@@ -1,15 +1,17 @@
 import os
-import requests
-from flask import Flask, request, jsonify
+from dotenv import load_dotenv
 
-# --- НАСТРОЙКИ: Замените на ваши значения ---
+# Загружаем переменные из файла .env
+load_dotenv()
+
+# --- НАСТРОЙКИ: загружаются из файла .env ---
 # 1. Токен вашего Telegram бота от @BotFather
-TELEGRAM_API_TOKEN = "ВАШ_ТЕЛЕГРАМ_ТОКЕН"
+TELEGRAM_API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
 
 # 2. Секрет вашего бота из Copilot Studio (Settings -> Channels -> Direct Line)
-DIRECT_LINE_SECRET = "ВАШ_DIRECT_LINE_СЕКРЕТ"
+DIRECT_LINE_SECRET = os.getenv("DIRECT_LINE_SECRET")
 
-# 3. URL для получения токена Direct Line. Обычно выглядит так, но проверьте в настройках канала.
+# 3. URL для получения токена Direct Line.
 DIRECT_LINE_ENDPOINT = "https://directline.botframework.com/v3/directline/tokens/generate"
 
 # URL для отправки сообщений в Telegram

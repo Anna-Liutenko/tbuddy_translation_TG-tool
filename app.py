@@ -134,17 +134,50 @@ def telegram_webhook():
                 session = conversations[chat_id]
 
                 # 1. Отправляем сообщение пользователя в Copilot
+                import time
+                start_ts = time.time()
+
+                # 1. Отправляем сообщение пользователя в Copilot
                 send_message_to_copilot(session['conv_id'], session['token'], user_message)
 
-                # 2. Небольшая пауза и получение ответа
-                import time
-                time.sleep(2)
-                bot_response, new_watermark = get_copilot_response(session['conv_id'], session['token'], session['watermark'])
+                # 2. Let the user know we're processing (typing...) — non-blocking
+                try:
+                    typing_url = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendChatAction"
+                    requests.post(typing_url, data={'chat_id': chat_id, 'action': 'typing'}, timeout=2)
+                except Exception:
+                    pass
+
+                # 3. Poll activities with a short timeout loop to reduce latency.
+                # Try frequently for up to POLL_TIMEOUT seconds before giving up.
+                POLL_TIMEOUT = 12.0
+                POLL_INTERVAL = 0.5
+                elapsed = 0.0
+                bot_response = None
+                new_watermark = session.get('watermark')
+                while elapsed < POLL_TIMEOUT:
+                    resp, nw = get_copilot_response(session['conv_id'], session['token'], new_watermark)
+                    if resp:
+                        bot_response = resp
+                        new_watermark = nw
+                        break
+                    time.sleep(POLL_INTERVAL)
+                    elapsed = time.time() - start_ts
+
+                # update stored watermark even if no response
                 conversations[chat_id]['watermark'] = new_watermark
 
-                # 3. Если есть ответ, отправляем его обратно в Telegram
+                duration = time.time() - start_ts
+                app.logger.info(f"Processed message for chat={chat_id} duration={duration:.2f}s found_response={bool(bot_response)}")
+
+                # 4. Если есть ответ, отправляем его обратно в Telegram
                 if bot_response:
                     send_telegram_message(chat_id, bot_response)
+                else:
+                    # optional: send a short fallback so user isn't left waiting silently
+                    try:
+                        send_telegram_message(chat_id, "I'm processing your request and will reply shortly...")
+                    except Exception:
+                        pass
         except Exception as e:
             import traceback
             tb = traceback.format_exc()

@@ -1,1 +1,4 @@
 .env
+# local env and runtime logs
+.env
+run.log

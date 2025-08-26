@@ -55,7 +55,7 @@ def start_direct_line_conversation():
         print(f"Ошибка при старте диалога: {response.status_code} {response.text}")
         return None, None
 
-def send_message_to_copilot(conversation_id, token, text):
+def send_message_to_copilot(conversation_id, token, text, from_id="user"):
     """Отправляет сообщение пользователя в Copilot Studio."""
     url = f"https://directline.botframework.com/v3/directline/conversations/{conversation_id}/activities"
     headers = {
@@ -64,7 +64,8 @@ def send_message_to_copilot(conversation_id, token, text):
     }
     payload = {
         "type": "message",
-        "from": {"id": "user"},
+    # Use a per-telegram-user from.id so BotFramework can distinguish users
+    "from": {"id": str(from_id)},
         "text": text
     }
     response = requests.post(url, headers=headers, json=payload)
@@ -78,7 +79,7 @@ def send_message_to_copilot(conversation_id, token, text):
     else:
         print(f"Ошибка отправки сообщения: {response.status_code} {response.text}")
 
-def get_copilot_response(conversation_id, token, last_watermark):
+def get_copilot_response(conversation_id, token, last_watermark, user_from_id="user"):
     """Получает ответ от Copilot Studio."""
     url = f"https://directline.botframework.com/v3/directline/conversations/{conversation_id}/activities"
     if last_watermark:
@@ -90,7 +91,8 @@ def get_copilot_response(conversation_id, token, last_watermark):
     response = requests.get(url, headers=headers)
     if response.status_code == 200:
         data = response.json()
-        bot_messages = [act['text'] for act in data.get('activities', []) if act['from']['id'] != 'user' and 'text' in act]
+        # Treat any activity not from this user as bot/system output
+        bot_messages = [act['text'] for act in data.get('activities', []) if act.get('from', {}).get('id') != str(user_from_id) and 'text' in act]
         new_watermark = data.get('watermark', last_watermark)
         try:
             print("DL activities response (count):", len(data.get('activities', [])))
@@ -129,7 +131,9 @@ def telegram_webhook():
                     if not token:
                         app.logger.error("Could not start Direct Line conversation for chat %s", chat_id)
                         return
-                    conversations[chat_id] = {"conv_id": conv_id, "token": token, "watermark": None}
+                    # create a per-chat from_id so DL user activities are tied to this Telegram chat
+                    from_id = f"telegram_{chat_id}"
+                    conversations[chat_id] = {"conv_id": conv_id, "token": token, "watermark": None, "from_id": from_id}
 
                 session = conversations[chat_id]
 
@@ -138,7 +142,7 @@ def telegram_webhook():
                 start_ts = time.time()
 
                 # 1. Отправляем сообщение пользователя в Copilot
-                send_message_to_copilot(session['conv_id'], session['token'], user_message)
+                send_message_to_copilot(session['conv_id'], session['token'], user_message, from_id=session.get('from_id', str(chat_id)))
 
                 # 2. Let the user know we're processing (typing...) — non-blocking
                 try:
@@ -155,7 +159,7 @@ def telegram_webhook():
                 bot_response = None
                 new_watermark = session.get('watermark')
                 while elapsed < POLL_TIMEOUT:
-                    resp, nw = get_copilot_response(session['conv_id'], session['token'], new_watermark)
+                    resp, nw = get_copilot_response(session['conv_id'], session['token'], new_watermark, user_from_id=session.get('from_id', str(chat_id)))
                     if resp:
                         bot_response = resp
                         new_watermark = nw

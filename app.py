@@ -28,6 +28,40 @@ app = Flask(__name__)
 # Ключ: ID чата в Telegram, Значение: ID диалога в Copilot Studio и токен.
 conversations = {}
 
+def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_id, total_timeout=120.0, interval=1.0):
+    """Background poller to catch delayed bot replies arriving after the immediate poll window.
+
+    This will poll activities until a bot response is found or total_timeout expires.
+    It updates the conversations[chat_id]['watermark'] when it finds new watermark.
+    """
+    import time
+    try:
+        t0 = time.time()
+        nw = start_watermark
+        while time.time() - t0 < total_timeout:
+            resp, new_nw = get_copilot_response(conv_id, token, nw, user_from_id=user_from_id)
+            if resp:
+                # update watermark
+                try:
+                    conversations[chat_id]['watermark'] = new_nw
+                except Exception:
+                    pass
+                try:
+                    send_telegram_message(chat_id, resp)
+                except Exception:
+                    pass
+                break
+            nw = new_nw
+            time.sleep(interval)
+    except Exception as e:
+        app.logger.error("Long poller exception for chat=%s: %s", chat_id, e)
+    finally:
+        # clear polling flag
+        try:
+            conversations[chat_id]['polling'] = False
+        except Exception:
+            pass
+
 def start_direct_line_conversation():
     """Начинает новый диалог с ботом Copilot Studio и возвращает токен и ID диалога."""
     headers = {
@@ -180,6 +214,16 @@ def telegram_webhook():
                     # optional: send a short fallback so user isn't left waiting silently
                     try:
                         send_telegram_message(chat_id, "I'm processing your request and will reply shortly...")
+                    except Exception:
+                        pass
+                    # start a background long-poller to catch delayed bot replies (if not already polling)
+                    try:
+                        if not conversations[chat_id].get('polling'):
+                            conversations[chat_id]['polling'] = True
+                            import threading as _threading
+                            lp = _threading.Thread(target=long_poll_for_activity, args=(session['conv_id'], session['token'], session.get('from_id', str(chat_id)), new_watermark, chat_id))
+                            lp.daemon = True
+                            lp.start()
                     except Exception:
                         pass
         except Exception as e:

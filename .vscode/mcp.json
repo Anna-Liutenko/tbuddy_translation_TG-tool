@@ -13,7 +13,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "@modelcontextprotocol/server-filesystem",
+        "@vscode/mcp-server-filesystem",  // <--- ИЗМЕНЕНИЕ ЗДЕСЬ
         "${workspaceFolder}"
       ]
     },
@@ -22,7 +22,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "@modelcontextprotocol/server-perplexity"
+        "@vscode/mcp-server-perplexity"     // <--- И ИЗМЕНЕНИЕ ЗДЕСЬ
       ],
       "env": {
         "PERPLEXITY_API_KEY": "${input:perplexityApiKey}"

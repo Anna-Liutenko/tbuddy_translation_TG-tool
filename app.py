@@ -14,7 +14,7 @@ TELEGRAM_API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
 DIRECT_LINE_SECRET = os.getenv("DIRECT_LINE_SECRET")
 
 # 3. URL для получения токена Direct Line.
-DIRECT_LINE_ENDPOINT = "https://directline.botframework.com/v3/directline/tokens/generate"
+DIRECT_LINE_ENDPOINT = "https://directline.botframework.com/v3/directline/conversations"
 
 # URL для отправки сообщений в Telegram
 TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendMessage"
@@ -33,12 +33,24 @@ def start_direct_line_conversation():
     headers = {
         'Authorization': f'Bearer {DIRECT_LINE_SECRET}',
     }
-    # Запрашиваем токен для начала диалога
+    # Создаём новый разговор (conversation) и получаем conversationId (+ возможно token)
     response = requests.post(DIRECT_LINE_ENDPOINT, headers=headers)
-    if response.status_code == 200:
+    if response.status_code in (200, 201):
         data = response.json()
+        # Defensive extraction: docs may return token and conversationId at top-level
+        token = data.get('token') or data.get('conversationToken') or None
+        conv_id = data.get('conversationId') or data.get('conversation', {}).get('id') or None
         print("Успешно начали диалог с Direct Line.")
-        return data['token'], data['conversationId']
+        print("DL create response:", data)
+        # If API did not return a conversation token, fall back to using the secret for server-side calls
+        if not token:
+            token = DIRECT_LINE_SECRET
+            print("No conversation token returned by DL; falling back to DIRECT_LINE_SECRET for auth (server-side).")
+        if not conv_id:
+            print("Warning: conversationId missing in Direct Line response")
+            return None, None
+        # Return (token, conversationId) - note order expected by callers
+        return token, conv_id
     else:
         print(f"Ошибка при старте диалога: {response.status_code} {response.text}")
         return None, None
@@ -56,8 +68,13 @@ def send_message_to_copilot(conversation_id, token, text):
         "text": text
     }
     response = requests.post(url, headers=headers, json=payload)
-    if response.status_code == 200:
+    # Direct Line may return 200 or 201 on activity post
+    if response.status_code in (200, 201):
         print("Сообщение успешно отправлено в Copilot.")
+        try:
+            print("DL send response:", response.json())
+        except Exception:
+            pass
     else:
         print(f"Ошибка отправки сообщения: {response.status_code} {response.text}")
 
@@ -75,6 +92,12 @@ def get_copilot_response(conversation_id, token, last_watermark):
         data = response.json()
         bot_messages = [act['text'] for act in data.get('activities', []) if act['from']['id'] != 'user' and 'text' in act]
         new_watermark = data.get('watermark', last_watermark)
+        try:
+            print("DL activities response (count):", len(data.get('activities', [])))
+            # print a small sample for debugging
+            print("DL activities sample:", data.get('activities', [])[:3])
+        except Exception:
+            pass
         return "\n".join(bot_messages), new_watermark
     else:
         print(f"Ошибка получения ответа: {response.status_code} {response.text}")

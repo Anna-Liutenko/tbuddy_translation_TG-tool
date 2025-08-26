@@ -82,40 +82,67 @@ def get_copilot_response(conversation_id, token, last_watermark):
 
 @app.route('/webhook', methods=['POST'])
 def telegram_webhook():
-    """Эта функция вызывается, когда Telegram присылает новое сообщение."""
-    update = request.get_json()
-    
-    if "message" in update and "text" in update["message"]:
-        chat_id = update["message"]["chat"]["id"]
-        user_message = update["message"]["text"]
-        
-        print(f"Получено сообщение от чата {chat_id}: {user_message}")
+    """Эта функция вызывается, когда Telegram присылает новое сообщение.
 
-        # Проверяем, есть ли уже активный диалог для этого чата
-        if chat_id not in conversations:
-            token, conv_id = start_direct_line_conversation()
-            if not token:
-                return jsonify(status="error", message="Could not start conversation")
-            conversations[chat_id] = {"conv_id": conv_id, "token": token, "watermark": None}
-        
-        session = conversations[chat_id]
-        
-        # 1. Отправляем сообщение пользователя в Copilot
-        send_message_to_copilot(session['conv_id'], session['token'], user_message)
-        
-        # 2. Ждем и получаем ответ от Copilot
-        # В простом примере делаем паузу и один запрос. В сложном приложении
-        # лучше использовать WebSocket для получения ответов в реальном времени.
-        import time
-        time.sleep(2) # Даем боту время на обработку
-        bot_response, new_watermark = get_copilot_response(session['conv_id'], session['token'], session['watermark'])
-        conversations[chat_id]['watermark'] = new_watermark # Сохраняем новую отметку
-        
-        # 3. Если есть ответ, отправляем его обратно в Telegram
-        if bot_response:
-            send_telegram_message(chat_id, bot_response)
+    Обрабатываем входящую активность в фоне (thread) и возвращаем 200 сразу.
+    Это уменьшает вероятность 502/504 от reverse-proxy или провайдера из-за долгой обработки.
+    """
+    update = request.get_json(silent=True)
 
+    def process_update(update_obj):
+        try:
+            if not update_obj:
+                app.logger.warning("Empty update_obj in background worker")
+                return
+
+            if "message" in update_obj and "text" in update_obj["message"]:
+                chat_id = update_obj["message"]["chat"]["id"]
+                user_message = update_obj["message"]["text"]
+                app.logger.info(f"[worker] Received message from {chat_id}: {user_message}")
+
+                # Проверяем, есть ли уже активный диалог для этого чата
+                if chat_id not in conversations:
+                    token, conv_id = start_direct_line_conversation()
+                    if not token:
+                        app.logger.error("Could not start Direct Line conversation for chat %s", chat_id)
+                        return
+                    conversations[chat_id] = {"conv_id": conv_id, "token": token, "watermark": None}
+
+                session = conversations[chat_id]
+
+                # 1. Отправляем сообщение пользователя в Copilot
+                send_message_to_copilot(session['conv_id'], session['token'], user_message)
+
+                # 2. Небольшая пауза и получение ответа
+                import time
+                time.sleep(2)
+                bot_response, new_watermark = get_copilot_response(session['conv_id'], session['token'], session['watermark'])
+                conversations[chat_id]['watermark'] = new_watermark
+
+                # 3. Если есть ответ, отправляем его обратно в Telegram
+                if bot_response:
+                    send_telegram_message(chat_id, bot_response)
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            app.logger.error("Exception in background worker: %s\n%s", e, tb)
+
+    # Запускаем обработку в фоновом потоке и возвращаем 200 немедленно
+    try:
+        import threading
+        worker = threading.Thread(target=process_update, args=(update,))
+        worker.daemon = True
+        worker.start()
+    except Exception as e:
+        app.logger.error("Failed to start background worker: %s", e)
+
+    # Возвращаем ответ Telegram сразу, чтобы избежать таймаутов и 502/504
     return jsonify(status="ok")
+
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify(status="ok", message="alive")
 
 def send_telegram_message(chat_id, text):
     """Отправляет текстовое сообщение в указанный чат Telegram."""
@@ -130,6 +157,23 @@ def send_telegram_message(chat_id, text):
         print(f"Ошибка отправки в Telegram: {response.status_code} {response.text}")
 
 if __name__ == '__main__':
-    # Запуск веб-сервера. Для реального использования нужен более надежный
-    # сервер, например, Gunicorn или Waitress.
-    app.run(host='0.0.0.0', port=8080)
+    # Небольшая проверка переменных окружения — полезно ловить ошибки на старте
+    if not TELEGRAM_API_TOKEN:
+        print("WARNING: TELEGRAM_API_TOKEN is not set. Telegram messages will fail.")
+    if not DIRECT_LINE_SECRET:
+        print("WARNING: DIRECT_LINE_SECRET is not set. Direct Line calls will fail.")
+
+    # Запуск в production: рекомендуем использовать Waitress на Windows (простая и надёжная)
+    # Установите dependency: pip install waitress
+    port = int(os.getenv('PORT', '8080'))
+    use_waitress = os.getenv('USE_WAITRESS', '1') == '1'
+    if use_waitress:
+        try:
+            from waitress import serve
+            print(f"Starting with Waitress on 0.0.0.0:{port}")
+            serve(app, host='0.0.0.0', port=port)
+        except Exception as e:
+            print("Waitress failed to start, falling back to Flask dev server. Error:", e)
+            app.run(host='0.0.0.0', port=port)
+    else:
+        app.run(host='0.0.0.0', port=port)

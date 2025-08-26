@@ -1,0 +1,82 @@
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnActivity
+  id: main
+  condition: =System.Activity.Text = "start"
+  type: Message
+  actions:
+    - kind: SetVariable
+      id: setVariable_SgNr6k
+      variable: Global.setupComplete
+      value: in process
+
+    - kind: Question
+      id: question_4uFeJE
+      interruptionPolicy:
+        allowInterruption: true
+
+      variable: init:Topic.userInput
+      prompt: What's languages you prefer? Write 2 or 3 languages.
+      entity: StringPrebuiltEntity
+
+    - kind: InvokeAIBuilderModelAction
+      id: invokeAIBuilderModelAction_GetCodes
+      input:
+        binding:
+          Text_20input: =Topic.userInput
+
+      output:
+        binding:
+          predictionOutput: Topic.tempLanguageCodes
+
+      aIModelId: f67302da-acf2-4135-ba8a-9bfd08879354
+
+    - kind: InvokeAIBuilderModelAction
+      id: invokeAIBuilderModelAction_GetNames
+      input:
+        binding:
+          Text_20input: =Topic.userInput
+
+      output:
+        binding:
+          predictionOutput: Topic.tempLanguageNames
+
+      aIModelId: e3d59f3d-5f77-4d39-877c-6aea3ce8f8a0
+
+    - kind: SetVariable
+      id: setVariable_IQ1B9u
+      variable: Global.userLanguages
+      value: =Topic.tempLanguageCodes.text & ","
+
+    - kind: SetVariable
+      id: setVariable_Ov5BRV
+      variable: Global.userLanguageNames
+      value: =Topic.tempLanguageNames.text
+
+    - kind: SetVariable
+      id: setVariable_openAD
+      variable: Global.setupComplete
+      value: complete
+
+    - kind: InvokeFlowAction
+      id: yuJoDk
+      input:
+        binding:
+          text: =System.Conversation.Id
+          text_1: =Global.userLanguages
+          text_2: =Global.userLanguageNames
+
+      output: {}
+      flowId: cb2b126f-ad7e-f011-b4cb-000d3a894f08
+
+    - kind: SendActivity
+      id: sendActivity_imOArM
+      activity: |-
+        Thanks! Setup is complete. Now we speak {Global.userLanguageNames}.
+        Send your message and I'll translate it.
+
+    - kind: EndDialog
+      id: JLC4GL
+
+inputType: {}
+outputType: {}

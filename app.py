@@ -1,4 +1,6 @@
 import os
+import requests
+from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 
 # Загружаем переменные из файла .env

@@ -1,0 +1,32 @@
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "perplexityApiKey",
+      "description": "Please enter your Perplexity API Key",
+      "password": true
+    }
+  ],
+  "servers": {
+    "filesystem": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "${workspaceFolder}"
+      ]
+    },
+    "perplexity": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-perplexity"
+      ],
+      "env": {
+        "PERPLEXITY_API_KEY": "${input:perplexityApiKey}"
+      }
+    }
+  }
+}

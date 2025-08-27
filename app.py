@@ -2,6 +2,9 @@ import os
 import requests
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
+import sqlite3
+from collections import deque, defaultdict
+from datetime import datetime
 
 # Загружаем переменные из файла .env
 load_dotenv()
@@ -28,6 +31,46 @@ app = Flask(__name__)
 # Ключ: ID чата в Telegram, Значение: ID диалога в Copilot Studio и токен.
 conversations = {}
 
+# Recent activity ids per chat to avoid duplicate forwards (keeps last 100 IDs)
+recent_activity_ids = defaultdict(lambda: deque(maxlen=100))
+
+# Simple SQLite DB to persist chat settings when Copilot confirms setup
+DB_PATH = os.path.join(os.path.dirname(__file__), 'chat_settings.db')
+
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute('''
+    CREATE TABLE IF NOT EXISTS ChatSettings (
+        chat_id TEXT PRIMARY KEY,
+        language_codes TEXT,
+        language_names TEXT,
+        updated_at TEXT
+    )
+    ''')
+    conn.commit()
+    conn.close()
+
+def set_chat_settings(chat_id, language_codes, language_names):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute('REPLACE INTO ChatSettings (chat_id, language_codes, language_names, updated_at) VALUES (?, ?, ?, ?)',
+                (str(chat_id), language_codes or '', language_names or '', datetime.utcnow().isoformat()))
+    conn.commit()
+    conn.close()
+
+def get_chat_settings(chat_id):
+    conn = sqlite3.connect(DB_PATH)
+    cur = conn.cursor()
+    cur.execute('SELECT language_codes, language_names FROM ChatSettings WHERE chat_id = ?', (str(chat_id),))
+    row = cur.fetchone()
+    conn.close()
+    if row:
+        return row[0], row[1]
+    return None, None
+
+init_db()
+
 def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_id, total_timeout=120.0, interval=1.0):
     """Background poller to catch delayed bot replies arriving after the immediate poll window.
 
@@ -39,17 +82,26 @@ def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_i
         t0 = time.time()
         nw = start_watermark
         while time.time() - t0 < total_timeout:
-            resp, new_nw = get_copilot_response(conv_id, token, nw, user_from_id=user_from_id)
-            if resp:
+            activities, new_nw = get_copilot_response(conv_id, token, nw, user_from_id=user_from_id)
+            if activities:
                 # update watermark
                 try:
                     conversations[chat_id]['watermark'] = new_nw
                 except Exception:
                     pass
-                try:
-                    send_telegram_message(chat_id, resp)
-                except Exception:
-                    pass
+                # forward each activity if not seen before
+                for act in activities:
+                    act_id = act.get('id')
+                    text = act.get('text')
+                    if not act_id or not text:
+                        continue
+                    if act_id in recent_activity_ids[chat_id]:
+                        continue
+                    recent_activity_ids[chat_id].append(act_id)
+                    try:
+                        send_telegram_message(chat_id, text)
+                    except Exception:
+                        pass
                 break
             nw = new_nw
             time.sleep(interval)
@@ -114,30 +166,30 @@ def send_message_to_copilot(conversation_id, token, text, from_id="user"):
         print(f"Ошибка отправки сообщения: {response.status_code} {response.text}")
 
 def get_copilot_response(conversation_id, token, last_watermark, user_from_id="user"):
-    """Получает ответ от Copilot Studio."""
+    """Return list of bot activities (dicts) not from user and updated watermark."""
     url = f"https://directline.botframework.com/v3/directline/conversations/{conversation_id}/activities"
     if last_watermark:
         url += f"?watermark={last_watermark}"
-    
+
     headers = {
         'Authorization': f'Bearer {token}',
     }
     response = requests.get(url, headers=headers)
     if response.status_code == 200:
         data = response.json()
-        # Treat any activity not from this user as bot/system output
-        bot_messages = [act['text'] for act in data.get('activities', []) if act.get('from', {}).get('id') != str(user_from_id) and 'text' in act]
+        activities = data.get('activities', [])
+        # Filter activities that are not from the Telegram user and have text
+        bot_activities = [act for act in activities if act.get('from', {}).get('id') != str(user_from_id) and act.get('text')]
         new_watermark = data.get('watermark', last_watermark)
         try:
-            print("DL activities response (count):", len(data.get('activities', [])))
-            # print a small sample for debugging
-            print("DL activities sample:", data.get('activities', [])[:3])
+            print("DL activities response (count):", len(activities))
+            print("DL activities sample:", activities[:3])
         except Exception:
             pass
-        return "\n".join(bot_messages), new_watermark
+        return bot_activities, new_watermark
     else:
         print(f"Ошибка получения ответа: {response.status_code} {response.text}")
-        return None, last_watermark
+        return [], last_watermark
 
 @app.route('/webhook', methods=['POST'])
 def telegram_webhook():
@@ -193,10 +245,29 @@ def telegram_webhook():
                 bot_response = None
                 new_watermark = session.get('watermark')
                 while elapsed < POLL_TIMEOUT:
-                    resp, nw = get_copilot_response(session['conv_id'], session['token'], new_watermark, user_from_id=session.get('from_id', str(chat_id)))
-                    if resp:
-                        bot_response = resp
+                    activities, nw = get_copilot_response(session['conv_id'], session['token'], new_watermark, user_from_id=session.get('from_id', str(chat_id)))
+                    if activities:
+                        for act in activities:
+                            act_id = act.get('id')
+                            text = act.get('text')
+                            if not act_id or not text:
+                                continue
+                            if act_id in recent_activity_ids[chat_id]:
+                                continue
+                            recent_activity_ids[chat_id].append(act_id)
+                            # Detect setup-complete messages from Copilot and persist settings
+                            try:
+                                if isinstance(text, str) and ('Setup is complete' in text or 'Now we speak' in text):
+                                    # crude parse: try to extract language names after 'Now we speak'
+                                    if 'Now we speak' in text:
+                                        suffix = text.split('Now we speak', 1)[1]
+                                        lang_names = suffix.strip().strip('.\n ')
+                                        set_chat_settings(chat_id, None, lang_names)
+                            except Exception:
+                                pass
+                            send_telegram_message(chat_id, text)
                         new_watermark = nw
+                        bot_response = True
                         break
                     time.sleep(POLL_INTERVAL)
                     elapsed = time.time() - start_ts

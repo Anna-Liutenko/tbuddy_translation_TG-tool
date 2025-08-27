@@ -4,3 +4,6 @@ context/
 .env
 run.log
 .env.txt
+.venv/
+venv/
+__pycache__/

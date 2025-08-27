@@ -1,3 +1,4 @@
+context/
 .env
 # local env and runtime logs
 .env

@@ -260,9 +260,24 @@ def telegram_webhook():
                                 if isinstance(text, str) and ('Setup is complete' in text or 'Now we speak' in text):
                                     # crude parse: try to extract language names after 'Now we speak'
                                     if 'Now we speak' in text:
-                                        suffix = text.split('Now we speak', 1)[1]
-                                        lang_names = suffix.strip().strip('.\n ')
-                                        set_chat_settings(chat_id, None, lang_names)
+                                        # Extract text between 'Now we speak' and the next '.' (or end of string)
+                                        try:
+                                            after = text.split('Now we speak', 1)[1]
+                                            # stop at the first '.' or at the phrase 'Send your message'
+                                            end_idx = None
+                                            for sep in ['.', '\n', 'Send your message', 'Send your message and']:
+                                                idx = after.find(sep)
+                                                if idx != -1:
+                                                    if end_idx is None or idx < end_idx:
+                                                        end_idx = idx
+                                            if end_idx is not None:
+                                                lang_names = after[:end_idx].strip().strip('.,\n ')
+                                            else:
+                                                lang_names = after.strip().strip('.,\n ')
+                                            if lang_names:
+                                                set_chat_settings(chat_id, None, lang_names)
+                                        except Exception:
+                                            pass
                             except Exception:
                                 pass
                             send_telegram_message(chat_id, text)
@@ -278,10 +293,9 @@ def telegram_webhook():
                 duration = time.time() - start_ts
                 app.logger.info(f"Processed message for chat={chat_id} duration={duration:.2f}s found_response={bool(bot_response)}")
 
-                # 4. Если есть ответ, отправляем его обратно в Telegram
-                if bot_response:
-                    send_telegram_message(chat_id, bot_response)
-                else:
+                # 4. Ответ(ы) уже были отправлены в Telegram выше when iterating activities.
+                # Avoid sending a boolean or duplicate message here (was sending 'True').
+                if not bot_response:
                     # optional: send a short fallback so user isn't left waiting silently
                     try:
                         send_telegram_message(chat_id, "I'm processing your request and will reply shortly...")

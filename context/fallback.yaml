@@ -1,8 +1,0 @@
-kind: AdaptiveDialog
-beginDialog:
-  kind: OnUnknownIntent
-  id: main
-  actions:
-    - kind: BeginDialog
-      id: ObLS2s
-      dialog: cr268_tBuddy.topic.startLanguageSetupEvent_gJG

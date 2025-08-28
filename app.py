@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 import sqlite3
 from collections import deque, defaultdict
 from datetime import datetime
+import re
+import logging
 
 # Загружаем переменные из файла .env
 load_dotenv()
@@ -25,6 +27,9 @@ TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendMessage"
 
 # Инициализация веб-сервера Flask
 app = Flask(__name__)
+# Ensure app logger prints INFO/DEBUG to console
+logging.basicConfig(level=logging.INFO)
+app.logger.setLevel(logging.INFO)
 
 # Словарь для хранения активных диалогов.
 # В реальном приложении лучше использовать базу данных (например, Redis или SQLite).
@@ -69,6 +74,70 @@ def get_chat_settings(chat_id):
         return row[0], row[1]
     return None, None
 
+
+def parse_and_persist_setup(chat_id, text):
+    """Try to extract language names from Copilot's setup confirmation and persist them.
+
+    Returns True if something was parsed and persisted, False otherwise.
+    """
+    try:
+        if not isinstance(text, str):
+            return False
+
+        lowered = text.lower()
+        # Ignore clear negative/fallback messages that indicate parsing failed
+        negative_markers = [
+            'no languages', 'no language', 'no languages are', 'no languages mentioned',
+            'no languages are mentioned', 'nothing', 'none'
+        ]
+        for nm in negative_markers:
+            if nm in lowered:
+                app.logger.info("Ignoring negative setup text for chat %s: %s", chat_id, text)
+                return False
+
+        # Look for common confirmation markers (case-insensitive checks above used lowered)
+        if 'Now we speak' in text:
+            after = text.split('Now we speak', 1)[1]
+        elif 'Setup is complete' in text:
+            after = text.split('Setup is complete', 1)[1]
+        else:
+            return False
+
+        # Trim common trailing phrases and punctuation
+        for sep in ['Send your message and', 'Send your message', '\n', '.']:
+            idx = after.find(sep)
+            if idx != -1:
+                after = after[:idx]
+        after = after.strip().strip('.,;: ')
+        if not after:
+            return False
+
+        # Split by commas or the word 'and' and clean up
+        parts = re.split(r',|\band\b', after)
+        names = [p.strip().strip('.,;: ') for p in parts if p and p.strip()]
+
+        # Basic validation: keep only parts that contain alphabetic characters and do not look like negatives
+        valid = []
+        for n in names:
+            ln = n.lower()
+            if any(x in ln for x in ['no ', 'none', 'nothing', 'not']):
+                continue
+            if re.search(r'[A-Za-zА-Яа-я]', n):
+                valid.append(n)
+
+        if not valid:
+            app.logger.info("No valid language names parsed from text for chat %s: %s", chat_id, text)
+            return False
+
+        lang_names = ', '.join(valid)
+
+        app.logger.info("Persisting parsed language names for chat %s: %s", chat_id, lang_names)
+        set_chat_settings(chat_id, None, lang_names)
+        return True
+    except Exception as e:
+        app.logger.error("Error parsing/persisting setup for chat %s: %s", chat_id, e)
+        return False
+
 init_db()
 
 def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_id, total_timeout=120.0, interval=1.0):
@@ -102,6 +171,7 @@ def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_i
                         send_telegram_message(chat_id, text)
                     except Exception:
                         pass
+                app.logger.info("Long-poller forwarded %d activities for chat=%s", len(activities), chat_id)
                 break
             nw = new_nw
             time.sleep(interval)
@@ -120,9 +190,14 @@ def start_direct_line_conversation():
         'Authorization': f'Bearer {DIRECT_LINE_SECRET}',
     }
     # Создаём новый разговор (conversation) и получаем conversationId (+ возможно token)
-    response = requests.post(DIRECT_LINE_ENDPOINT, headers=headers)
+    response = requests.post(DIRECT_LINE_ENDPOINT, headers=headers, timeout=10)
+    app.logger.info("DirectLine create convo status=%s", response.status_code)
     if response.status_code in (200, 201):
-        data = response.json()
+        try:
+            data = response.json()
+        except Exception:
+            data = None
+        app.logger.info("DirectLine create keys=%s", list(data.keys()) if isinstance(data, dict) else None)
         # Defensive extraction: docs may return token and conversationId at top-level
         token = data.get('token') or data.get('conversationToken') or None
         conv_id = data.get('conversationId') or data.get('conversation', {}).get('id') or None
@@ -154,16 +229,17 @@ def send_message_to_copilot(conversation_id, token, text, from_id="user"):
     "from": {"id": str(from_id)},
         "text": text
     }
-    response = requests.post(url, headers=headers, json=payload)
+    response = requests.post(url, headers=headers, json=payload, timeout=10)
     # Direct Line may return 200 or 201 on activity post
+    app.logger.info("DirectLine send activity status=%s convo=%s", response.status_code, conversation_id)
     if response.status_code in (200, 201):
-        print("Сообщение успешно отправлено в Copilot.")
         try:
-            print("DL send response:", response.json())
+            j = response.json()
+            app.logger.debug("DL send keys=%s", list(j.keys()) if isinstance(j, dict) else None)
         except Exception:
-            pass
+            app.logger.debug("DL send: no json body")
     else:
-        print(f"Ошибка отправки сообщения: {response.status_code} {response.text}")
+        app.logger.warning("Ошибка отправки сообщения: %s %s", response.status_code, (response.text or '')[:200])
 
 def get_copilot_response(conversation_id, token, last_watermark, user_from_id="user"):
     """Return list of bot activities (dicts) not from user and updated watermark."""
@@ -174,10 +250,14 @@ def get_copilot_response(conversation_id, token, last_watermark, user_from_id="u
     headers = {
         'Authorization': f'Bearer {token}',
     }
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers, timeout=10)
+    app.logger.info("DirectLine get activities status=%s convo=%s watermark=%s", response.status_code, conversation_id, last_watermark)
     if response.status_code == 200:
-        data = response.json()
-        activities = data.get('activities', [])
+        try:
+            data = response.json()
+        except Exception:
+            data = {}
+        activities = data.get('activities', []) if isinstance(data, dict) else []
         # Filter activities that are not from the Telegram user and have text
         bot_activities = [act for act in activities if act.get('from', {}).get('id') != str(user_from_id) and act.get('text')]
         new_watermark = data.get('watermark', last_watermark)
@@ -255,29 +335,9 @@ def telegram_webhook():
                             if act_id in recent_activity_ids[chat_id]:
                                 continue
                             recent_activity_ids[chat_id].append(act_id)
-                            # Detect setup-complete messages from Copilot and persist settings
+                            # Try central helper to parse Copilot setup confirmation and persist settings
                             try:
-                                if isinstance(text, str) and ('Setup is complete' in text or 'Now we speak' in text):
-                                    # crude parse: try to extract language names after 'Now we speak'
-                                    if 'Now we speak' in text:
-                                        # Extract text between 'Now we speak' and the next '.' (or end of string)
-                                        try:
-                                            after = text.split('Now we speak', 1)[1]
-                                            # stop at the first '.' or at the phrase 'Send your message'
-                                            end_idx = None
-                                            for sep in ['.', '\n', 'Send your message', 'Send your message and']:
-                                                idx = after.find(sep)
-                                                if idx != -1:
-                                                    if end_idx is None or idx < end_idx:
-                                                        end_idx = idx
-                                            if end_idx is not None:
-                                                lang_names = after[:end_idx].strip().strip('.,\n ')
-                                            else:
-                                                lang_names = after.strip().strip('.,\n ')
-                                            if lang_names:
-                                                set_chat_settings(chat_id, None, lang_names)
-                                        except Exception:
-                                            pass
+                                parse_and_persist_setup(chat_id, text)
                             except Exception:
                                 pass
                             send_telegram_message(chat_id, text)
@@ -332,6 +392,20 @@ def telegram_webhook():
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify(status="ok", message="alive")
+
+
+@app.route('/dump-settings', methods=['GET'])
+def dump_settings():
+    """Return all rows from ChatSettings for quick inspection."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cur = conn.cursor()
+        cur.execute('SELECT chat_id, language_codes, language_names, updated_at FROM ChatSettings')
+        rows = cur.fetchall()
+        conn.close()
+        return jsonify(count=len(rows), rows=[list(r) for r in rows])
+    except Exception as e:
+        return jsonify(error=str(e)), 500
 
 def send_telegram_message(chat_id, text):
     """Отправляет текстовое сообщение в указанный чат Telegram."""

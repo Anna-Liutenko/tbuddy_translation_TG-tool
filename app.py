@@ -2,7 +2,7 @@ import os
 import requests
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
-import sqlite3
+import db
 from collections import deque, defaultdict
 from datetime import datetime
 import re
@@ -48,37 +48,9 @@ recent_activity_ids = defaultdict(lambda: deque(maxlen=100))
 # Simple SQLite DB to persist chat settings when Copilot confirms setup
 DB_PATH = os.path.join(os.path.dirname(__file__), 'chat_settings.db')
 
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute('''
-    CREATE TABLE IF NOT EXISTS ChatSettings (
-        chat_id TEXT PRIMARY KEY,
-        language_codes TEXT,
-        language_names TEXT,
-        updated_at TEXT
-    )
-    ''')
-    conn.commit()
-    conn.close()
-
-def set_chat_settings(chat_id, language_codes, language_names):
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute('REPLACE INTO ChatSettings (chat_id, language_codes, language_names, updated_at) VALUES (?, ?, ?, ?)',
-                (str(chat_id), language_codes or '', language_names or '', datetime.utcnow().isoformat()))
-    conn.commit()
-    conn.close()
-
-def get_chat_settings(chat_id):
-    conn = sqlite3.connect(DB_PATH)
-    cur = conn.cursor()
-    cur.execute('SELECT language_codes, language_names FROM ChatSettings WHERE chat_id = ?', (str(chat_id),))
-    row = cur.fetchone()
-    conn.close()
-    if row:
-        return row[0], row[1]
-    return None, None
+# DB abstraction: use db.py for all ChatSettings access
+# NOTE: db.py currently uses SQLite and will raise NotImplementedError
+# if DATABASE_URL is set. This centralizes DB access for easier future migration.
 
 
 def parse_and_persist_setup(chat_id, text):
@@ -190,7 +162,11 @@ def parse_and_persist_setup(chat_id, text):
 
         lang_names = ', '.join(names)
         app.logger.info("Persisting parsed language names for chat %s: %s", chat_id, lang_names)
-        set_chat_settings(chat_id, None, lang_names)
+        # store language_codes as empty string for now to preserve original schema
+        try:
+            db.upsert_chat_settings(chat_id, '', lang_names, datetime.utcnow().isoformat())
+        except Exception as _e:
+            app.logger.error("Failed to persist chat settings for %s: %s", chat_id, _e)
         return True
     except Exception as e:
         app.logger.error("Error parsing/persisting setup for chat %s: %s", chat_id, e)
@@ -216,7 +192,7 @@ def is_language_question(text):
     except Exception:
         return False
 
-init_db()
+db.init_db()
 
 def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_id, total_timeout=120.0, interval=1.0):
     """Background poller to catch delayed bot replies arriving after the immediate poll window.
@@ -489,12 +465,8 @@ def health_check():
 def dump_settings():
     """Return all rows from ChatSettings for quick inspection."""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cur = conn.cursor()
-        cur.execute('SELECT chat_id, language_codes, language_names, updated_at FROM ChatSettings')
-        rows = cur.fetchall()
-        conn.close()
-        return jsonify(count=len(rows), rows=[list(r) for r in rows])
+        rows = db.dump_all()
+        return jsonify(count=len(rows), rows=rows)
     except Exception as e:
         return jsonify(error=str(e)), 500
 

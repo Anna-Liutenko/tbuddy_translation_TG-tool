@@ -360,8 +360,11 @@ def telegram_webhook():
                 # Проверяем, есть ли уже активный диалог для этого чата
                 if chat_id not in conversations:
                     token, conv_id = start_direct_line_conversation()
-                    if not token:
-                        app.logger.error("Could not start Direct Line conversation for chat %s", chat_id)
+                    # Require both a usable auth token and a conversation id. If either is missing,
+                    # do not create a conversations entry to avoid downstream errors when sending
+                    # or polling activities.
+                    if not token or not conv_id:
+                        app.logger.error("Could not start Direct Line conversation for chat %s - token=%s conv_id=%s", chat_id, bool(token), bool(conv_id))
                         return
                     # create a per-chat from_id so DL user activities are tied to this Telegram chat
                     from_id = f"telegram_{chat_id}"

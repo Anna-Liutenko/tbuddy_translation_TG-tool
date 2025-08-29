@@ -9,7 +9,7 @@ Group=tbuddy
 WorkingDirectory=/opt/tbuddy
 # Use an EnvironmentFile to keep secrets out of systemd unit; create /etc/tbuddy/env
 EnvironmentFile=/etc/tbuddy/env
-ExecStart=/opt/tbuddy/venv/bin/gunicorn --bind 127.0.0.1:8080 --workers 2 app:app
+ExecStart=/opt/tbuddy/venv/bin/gunicorn --bind 127.0.0.1:8080 --workers 1 app:app
 Restart=on-failure
 RestartSec=5s
 

@@ -101,6 +101,8 @@ curl "https://api.telegram.org/bot${TELEGRAM_API_TOKEN}/getWebhookInfo"
 
 - SQLite is fine for a single-worker setup. If you choose to run multiple Gunicorn workers, either run a single worker (`--workers 1`) or migrate to Postgres (recommended for production/high concurrency).
 
+Note: the repository now includes a small DB abstraction (`db.py`) and a `migrations/` folder with notes. `db.py` centralizes ChatSettings access and intentionally blocks `DATABASE_URL` usage until a proper backend is implemented. This makes future migration to Postgres or another DB straightforward: implement the backend in `db.py` and set `DATABASE_URL` on the server.
+
 ## 6) Healthchecks & logs
 
 - Use `systemctl status tbuddy` and `journalctl -u tbuddy -f` to follow logs. Nginx logs are in `/var/log/nginx/`.

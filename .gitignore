@@ -1,4 +1,9 @@
-context/
+chat_settings.db
+.venv/
+__pycache__/
+/.vscode/
+*.pyc
+deploy/*.pemcontext/
 .env
 # local env and runtime logs
 .env

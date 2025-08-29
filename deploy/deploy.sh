@@ -6,12 +6,12 @@ echo "It does not modify remote servers. Run the printed commands on the target 
 
 cat <<'CMD'
 # On Ubuntu server (run as root or with sudo):
-apt update && apt install -y python3.11 python3.11-venv python3-pip nginx certbot python3-certbot-nginx
+apt update && apt install -y python3 python3-venv python3-pip nginx certbot python3-certbot-nginx
 useradd -r -s /bin/false tbuddy || true
 mkdir -p /opt/tbuddy
 # clone repo into /opt/tbuddy, create venv, install deps:
 cd /opt/tbuddy
-python3.11 -m venv venv
+python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt

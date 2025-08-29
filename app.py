@@ -6,6 +6,7 @@ import sqlite3
 from collections import deque, defaultdict
 from datetime import datetime
 import re
+import json
 import logging
 
 # Загружаем переменные из файла .env
@@ -24,6 +25,9 @@ DIRECT_LINE_ENDPOINT = "https://directline.botframework.com/v3/directline/conver
 # URL для отправки сообщений в Telegram
 TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendMessage"
 # ---------------------------------------------
+# Local debug fallback: when DEBUG_LOCAL=1, messages will be printed to console
+DEBUG_LOCAL = os.getenv('DEBUG_LOCAL', '0') == '1'
+DEBUG_VERBOSE = os.getenv('DEBUG_VERBOSE', '0') == '1'
 
 # Инициализация веб-сервера Flask
 app = Flask(__name__)
@@ -35,6 +39,8 @@ app.logger.setLevel(logging.INFO)
 # В реальном приложении лучше использовать базу данных (например, Redis или SQLite).
 # Ключ: ID чата в Telegram, Значение: ID диалога в Copilot Studio и токен.
 conversations = {}
+# store last user message per chat as a simple fallback
+last_user_message = {}
 
 # Recent activity ids per chat to avoid duplicate forwards (keeps last 100 IDs)
 recent_activity_ids = defaultdict(lambda: deque(maxlen=100))
@@ -84,6 +90,25 @@ def parse_and_persist_setup(chat_id, text):
         if not isinstance(text, str):
             return False
 
+        # Guard: if text looks like a translation block (e.g. "ru: Доброе утро!\nja: ...")
+        # avoid parsing these as language names. Common signs: multiple lines and
+        # lines starting with short language codes followed by ':' or multiple ':' occurrences.
+        try:
+            if '\n' in text or text.count(':') >= 1:
+                lines = [l.strip() for l in text.splitlines() if l.strip()]
+                short_code_line = False
+                for ln in lines:
+                    # matches patterns like 'ru: ...' or 'en: Hello' or 'ja: おはよう'
+                    if re.match(r'^[A-Za-z]{2,3}\s*:', ln):
+                        short_code_line = True
+                        break
+                if short_code_line and len(lines) >= 1:
+                    app.logger.info("Skipping parse: looks like translation block for chat %s: %s", chat_id, text[:120])
+                    return False
+        except Exception:
+            # if detection fails, continue to normal parsing
+            pass
+
         lowered = text.lower()
         # Ignore clear negative/fallback messages that indicate parsing failed
         negative_markers = [
@@ -95,47 +120,100 @@ def parse_and_persist_setup(chat_id, text):
                 app.logger.info("Ignoring negative setup text for chat %s: %s", chat_id, text)
                 return False
 
-        # Look for common confirmation markers (case-insensitive checks above used lowered)
-        if 'Now we speak' in text:
-            after = text.split('Now we speak', 1)[1]
-        elif 'Setup is complete' in text:
-            after = text.split('Setup is complete', 1)[1]
-        else:
-            return False
+        def extract_language_names_from_text(t):
+            """Try to extract a list of language names from a free text string.
 
-        # Trim common trailing phrases and punctuation
-        for sep in ['Send your message and', 'Send your message', '\n', '.']:
-            idx = after.find(sep)
-            if idx != -1:
-                after = after[:idx]
-        after = after.strip().strip('.,;: ')
-        if not after:
-            return False
+            Returns a list of cleaned names (may be empty).
+            """
+            if not t or not isinstance(t, str):
+                return []
+            s = t.strip()
+            # Remove common trailing sentences
+            for sep in ['Send your message and', 'Send your message', '\n']:
+                if sep in s:
+                    s = s.split(sep, 1)[0]
+            s = s.strip().strip('.,;: ')
+            if not s:
+                return []
 
-        # Split by commas or the word 'and' and clean up
-        parts = re.split(r',|\band\b', after)
-        names = [p.strip().strip('.,;: ') for p in parts if p and p.strip()]
+            # Prefer comma or 'and' separated lists
+            if ',' in s or '\band\b' in s:
+                parts = re.split(r',|\band\b', s)
+            else:
+                # fallback: split by slash or semicolon
+                if '/' in s:
+                    parts = s.split('/')
+                elif ';' in s:
+                    parts = s.split(';')
+                else:
+                    # last resort: split by spaces but only accept if looks like a short list
+                    tokens = s.split()
+                    # if there are multiple tokens and not a long sentence, treat each token as a language
+                    if 1 < len(tokens) <= 6:
+                        parts = tokens
+                    else:
+                        return []
 
-        # Basic validation: keep only parts that contain alphabetic characters and do not look like negatives
-        valid = []
-        for n in names:
-            ln = n.lower()
-            if any(x in ln for x in ['no ', 'none', 'nothing', 'not']):
-                continue
-            if re.search(r'[A-Za-zА-Яа-я]', n):
-                valid.append(n)
+            cleaned = [p.strip().strip('.,;: ') for p in parts if p and p.strip()]
+            valid = []
+            for n in cleaned:
+                ln = n.lower()
+                if any(x in ln for x in ['no ', 'none', 'nothing', 'not']):
+                    continue
+                # require at least one alphabetic character (Latin or Cyrillic)
+                if re.search(r'[A-Za-zА-Яа-я]', n):
+                    valid.append(n)
+            return valid
 
-        if not valid:
+        # 1) Try to parse the canonical confirmation text: look for markers
+        after = None
+        if 'now we speak' in lowered:
+            # case-insensitive split
+            parts = re.split(r'now we speak', text, flags=re.IGNORECASE)
+            after = parts[1] if len(parts) > 1 else None
+        elif 'setup is complete' in lowered:
+            parts = re.split(r'setup is complete', text, flags=re.IGNORECASE)
+            after = parts[1] if len(parts) > 1 else None
+
+        names = []
+        if after:
+            names = extract_language_names_from_text(after)
+
+        # 2) If no names found in canonical confirmation, try to extract directly from the provided text
+        if not names:
+            names = extract_language_names_from_text(text)
+
+        # Require at least two languages to avoid false positives (copilot prompt asks 2-3 languages)
+        if not names or len(names) < 2:
             app.logger.info("No valid language names parsed from text for chat %s: %s", chat_id, text)
             return False
 
-        lang_names = ', '.join(valid)
-
+        lang_names = ', '.join(names)
         app.logger.info("Persisting parsed language names for chat %s: %s", chat_id, lang_names)
         set_chat_settings(chat_id, None, lang_names)
         return True
     except Exception as e:
         app.logger.error("Error parsing/persisting setup for chat %s: %s", chat_id, e)
+        return False
+
+
+def is_language_question(text):
+    """Return True if the bot text looks like a question asking the user to provide languages."""
+    try:
+        if not text or not isinstance(text, str):
+            return False
+        lw = text.lower()
+        # must mention 'language' or 'languages'
+        if 'language' not in lw and 'languages' not in lw:
+            return False
+        triggers = ['what', "what's", 'which', 'prefer', 'write', 'specify', 'please', 'put']
+        if any(t in lw for t in triggers):
+            return True
+        # explicit prompt forms
+        if 'write 2' in lw or '2 or 3' in lw or 'write 3' in lw:
+            return True
+        return False
+    except Exception:
         return False
 
 init_db()
@@ -263,7 +341,14 @@ def get_copilot_response(conversation_id, token, last_watermark, user_from_id="u
         new_watermark = data.get('watermark', last_watermark)
         try:
             print("DL activities response (count):", len(activities))
+            # Print a small sample by default
             print("DL activities sample:", activities[:3])
+            # When verbose enabled, print full activities JSON (no secrets)
+            if DEBUG_VERBOSE:
+                try:
+                    print('DL activities full JSON:\n', json.dumps(activities, ensure_ascii=False, indent=2))
+                except Exception:
+                    print('DL activities full (raw):', activities)
         except Exception:
             pass
         return bot_activities, new_watermark
@@ -289,6 +374,11 @@ def telegram_webhook():
             if "message" in update_obj and "text" in update_obj["message"]:
                 chat_id = update_obj["message"]["chat"]["id"]
                 user_message = update_obj["message"]["text"]
+                # persist last user message for fallback parsing later
+                try:
+                    last_user_message[chat_id] = user_message
+                except Exception:
+                    pass
                 app.logger.info(f"[worker] Received message from {chat_id}: {user_message}")
 
                 # Проверяем, есть ли уже активный диалог для этого чата
@@ -337,6 +427,7 @@ def telegram_webhook():
                             recent_activity_ids[chat_id].append(act_id)
                             # Try central helper to parse Copilot setup confirmation and persist settings
                             try:
+                                # Only attempt to parse/persist when Copilot itself sends a confirmation message
                                 parse_and_persist_setup(chat_id, text)
                             except Exception:
                                 pass
@@ -413,11 +504,32 @@ def send_telegram_message(chat_id, text):
         'chat_id': chat_id,
         'text': text
     }
-    response = requests.post(TELEGRAM_URL, json=payload)
+    # If DEBUG_LOCAL is enabled, don't call Telegram — just print to console for debugging
+    if DEBUG_LOCAL:
+        app.logger.info("DEBUG_LOCAL enabled — would send to chat %s: %s", chat_id, text)
+        # also print so it's visible in console output
+        print(f"[LOCAL FALLBACK] chat={chat_id} text={text}")
+        return True
+
+    try:
+        response = requests.post(TELEGRAM_URL, json=payload, timeout=5)
+    except Exception as e:
+        app.logger.error("Exception when sending to Telegram for chat %s: %s", chat_id, e)
+        print(f"[LOCAL FALLBACK due to exception] chat={chat_id} text={text}")
+        return False
+
     if response.status_code == 200:
         print(f"Ответ успешно отправлен в чат {chat_id}.")
+        return True
     else:
-        print(f"Ошибка отправки в Telegram: {response.status_code} {response.text}")
+        # On error (for example chat not found), log and fallback to printing the message locally
+        try:
+            err_text = response.text
+        except Exception:
+            err_text = '<no-response-body>'
+        app.logger.warning("Ошибка отправки в Telegram: %s %s", response.status_code, (err_text or '')[:200])
+        print(f"[TELEGRAM ERROR fallback] status={response.status_code} chat={chat_id} text={text}")
+        return False
 
 if __name__ == '__main__':
     # Небольшая проверка переменных окружения — полезно ловить ошибки на старте

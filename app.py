@@ -255,19 +255,30 @@ def start_direct_line_conversation():
         # Defensive extraction: docs may return token and conversationId at top-level
         token = data.get('token') or data.get('conversationToken') or None
         conv_id = data.get('conversationId') or data.get('conversation', {}).get('id') or None
-        print("Успешно начали диалог с Direct Line.")
-        print("DL create response:", data)
+        # Avoid printing the full Direct Line response (it may include a token).
+        # Log only non-sensitive metadata; if verbose debugging is enabled, log a redacted copy.
+        try:
+            app.logger.info("Started Direct Line conversation convo=%s keys=%s", conv_id, list(data.keys()) if isinstance(data, dict) else None)
+            if DEBUG_VERBOSE and isinstance(data, dict):
+                redacted = dict(data)
+                if 'token' in redacted:
+                    redacted['token'] = '<REDACTED>'
+                app.logger.debug("DL create response (redacted): %s", redacted)
+        except Exception:
+            pass
         # If API did not return a conversation token, fall back to using the secret for server-side calls
         if not token:
             token = DIRECT_LINE_SECRET
-            print("No conversation token returned by DL; falling back to DIRECT_LINE_SECRET for auth (server-side).")
+            app.logger.warning("No conversation token returned by DL; falling back to DIRECT_LINE_SECRET for auth (server-side).")
         if not conv_id:
-            print("Warning: conversationId missing in Direct Line response")
+            app.logger.warning("conversationId missing in Direct Line response")
             return None, None
         # Return (token, conversationId) - note order expected by callers
         return token, conv_id
     else:
-        print(f"Ошибка при старте диалога: {response.status_code} {response.text}")
+        # avoid logging potentially large bodies without truncation
+        body = (response.text or '')[:200]
+        app.logger.error("Error starting Direct Line conversation: %s %s", response.status_code, body)
         return None, None
 
 def send_message_to_copilot(conversation_id, token, text, from_id="user"):
@@ -316,20 +327,43 @@ def get_copilot_response(conversation_id, token, last_watermark, user_from_id="u
         bot_activities = [act for act in activities if act.get('from', {}).get('id') != str(user_from_id) and act.get('text')]
         new_watermark = data.get('watermark', last_watermark)
         try:
-            print("DL activities response (count):", len(activities))
-            # Print a small sample by default
-            print("DL activities sample:", activities[:3])
-            # When verbose enabled, print full activities JSON (no secrets)
-            if DEBUG_VERBOSE:
+            # Log a short, non-sensitive summary so operators can see activity volume.
+            app.logger.info("DL activities count=%d convo=%s", len(activities), conversation_id)
+            # Log a small redacted sample when verbose debugging is explicitly enabled.
+            if DEBUG_VERBOSE and isinstance(activities, list):
+                def _redact_activity(a):
+                    if not isinstance(a, dict):
+                        return '<non-dict-activity>'
+                    ra = {}
+                    for k, v in a.items():
+                        # redact potentially large or sensitive fields
+                        if k in ('channelData', 'attachments', 'entities'):
+                            ra[k] = '<REDACTED>'
+                        elif k in ('streamUrl', 'token'):
+                            ra[k] = '<REDACTED>'
+                        elif k == 'text':
+                            try:
+                                if isinstance(v, str) and len(v) > 200:
+                                    ra[k] = v[:200] + '...'
+                                else:
+                                    ra[k] = v
+                            except Exception:
+                                ra[k] = '<unreadable-text>'
+                        else:
+                            ra[k] = v
+                    return ra
+
+                redacted_sample = [_redact_activity(a) for a in activities[:3]]
                 try:
-                    print('DL activities full JSON:\n', json.dumps(activities, ensure_ascii=False, indent=2))
+                    app.logger.debug("DL activities (redacted sample): %s", json.dumps(redacted_sample, ensure_ascii=False, indent=2))
                 except Exception:
-                    print('DL activities full (raw):', activities)
+                    app.logger.debug("DL activities (redacted sample): %s", str(redacted_sample))
         except Exception:
             pass
         return bot_activities, new_watermark
     else:
-        print(f"Ошибка получения ответа: {response.status_code} {response.text}")
+        body = (response.text or '')[:200]
+        app.logger.error("Error fetching Direct Line activities: %s %s", response.status_code, body)
         return [], last_watermark
 
 @app.route('/webhook', methods=['POST'])
@@ -482,19 +516,19 @@ def send_telegram_message(chat_id, text):
     # If DEBUG_LOCAL is enabled, don't call Telegram — just print to console for debugging
     if DEBUG_LOCAL:
         app.logger.info("DEBUG_LOCAL enabled — would send to chat %s: %s", chat_id, text)
-        # also print so it's visible in console output
-        print(f"[LOCAL FALLBACK] chat={chat_id} text={text}")
+        # do not print secrets to stdout; keep local fallback in logs only
+        app.logger.debug("[LOCAL FALLBACK] chat=%s text=%s", chat_id, text)
         return True
 
     try:
         response = requests.post(TELEGRAM_URL, json=payload, timeout=5)
     except Exception as e:
         app.logger.error("Exception when sending to Telegram for chat %s: %s", chat_id, e)
-        print(f"[LOCAL FALLBACK due to exception] chat={chat_id} text={text}")
+        app.logger.debug("[LOCAL FALLBACK due to exception] chat=%s text=%s", chat_id, text)
         return False
 
     if response.status_code == 200:
-        print(f"Ответ успешно отправлен в чат {chat_id}.")
+        app.logger.info("Telegram send succeeded chat=%s", chat_id)
         return True
     else:
         # On error (for example chat not found), log and fallback to printing the message locally
@@ -503,15 +537,15 @@ def send_telegram_message(chat_id, text):
         except Exception:
             err_text = '<no-response-body>'
         app.logger.warning("Ошибка отправки в Telegram: %s %s", response.status_code, (err_text or '')[:200])
-        print(f"[TELEGRAM ERROR fallback] status={response.status_code} chat={chat_id} text={text}")
-        return False
+    app.logger.debug("[TELEGRAM ERROR fallback] status=%s chat=%s text=%s", response.status_code, chat_id, text)
+    return False
 
 if __name__ == '__main__':
     # Небольшая проверка переменных окружения — полезно ловить ошибки на старте
     if not TELEGRAM_API_TOKEN:
-        print("WARNING: TELEGRAM_API_TOKEN is not set. Telegram messages will fail.")
+        app.logger.warning("TELEGRAM_API_TOKEN is not set. Telegram messages will fail.")
     if not DIRECT_LINE_SECRET:
-        print("WARNING: DIRECT_LINE_SECRET is not set. Direct Line calls will fail.")
+        app.logger.warning("DIRECT_LINE_SECRET is not set. Direct Line calls will fail.")
 
     # Запуск в production: рекомендуем использовать Waitress на Windows (простая и надёжная)
     # Установите dependency: pip install waitress
@@ -520,10 +554,10 @@ if __name__ == '__main__':
     if use_waitress:
         try:
             from waitress import serve
-            print(f"Starting with Waitress on 0.0.0.0:{port}")
+            app.logger.info("Starting with Waitress on 0.0.0.0:%s", port)
             serve(app, host='0.0.0.0', port=port)
         except Exception as e:
-            print("Waitress failed to start, falling back to Flask dev server. Error:", e)
+            app.logger.exception("Waitress failed to start, falling back to Flask dev server.")
             app.run(host='0.0.0.0', port=port)
     else:
         app.run(host='0.0.0.0', port=port)

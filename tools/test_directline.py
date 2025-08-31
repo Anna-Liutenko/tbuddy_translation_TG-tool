@@ -1,29 +1,32 @@
 from dotenv import load_dotenv
 import os
 import requests
+import logging
 
 load_dotenv()
+log = logging.getLogger('test_directline')
+logging.basicConfig(level=logging.INFO)
 secret = os.getenv('DIRECT_LINE_SECRET')
 endpoint = 'https://directline.botframework.com/v3/directline/conversations'
 if not secret:
-    print('NO_SECRET')
+    log.error('NO_SECRET')
     raise SystemExit(1)
 headers = {'Authorization': f'Bearer {secret}'}
 try:
     resp = requests.post(endpoint, headers=headers, timeout=10)
-    print('STATUS', resp.status_code)
+    log.info('STATUS %s', resp.status_code)
     j = None
     try:
         j = resp.json()
     except Exception:
-        print('NO_JSON')
+        log.warning('NO_JSON')
     if j:
-        # print only which keys are present, do not echo values
-        print('KEYS', list(j.keys()))
+        # log only which keys are present, do not echo values
+        log.info('KEYS %s', list(j.keys()))
         # indicate if conversationId or token present
-        print('HAS_conversationId', bool(j.get('conversationId') or (j.get('conversation') and j.get('conversation').get('id'))))
-        print('HAS_token', bool(j.get('token') or j.get('conversationToken')))
+        log.info('HAS_conversationId %s', bool(j.get('conversationId') or (j.get('conversation') and j.get('conversation').get('id'))))
+        log.info('HAS_token %s', bool(j.get('token') or j.get('conversationToken')))
     else:
-        print('EMPTY_BODY')
+        log.warning('EMPTY_BODY')
 except Exception as e:
-    print('EXCEPTION', type(e).__name__, str(e))
+    log.exception('EXCEPTION %s', e)

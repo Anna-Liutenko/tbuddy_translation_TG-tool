@@ -92,7 +92,10 @@ def dump_all(sqlite_file: Optional[str] = None) -> List[Dict[str, str]]:
 
 
 if __name__ == '__main__':
-    # quick smoke: print rows
+    # quick smoke: log rows instead of printing to stdout
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    log = logging.getLogger('db')
     init_db()
     for r in dump_all():
-        print(r)
+        log.info("row=%s", r)

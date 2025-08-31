@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "BadArgument",
+    "message": "Missing token or secret"
+  }
+}

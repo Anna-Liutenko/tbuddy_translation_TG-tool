@@ -384,6 +384,22 @@ def telegram_webhook():
             if "message" in update_obj and "text" in update_obj["message"]:
                 chat_id = update_obj["message"]["chat"]["id"]
                 user_message = update_obj["message"]["text"]
+
+                # Handle the /reset command
+                if user_message.strip() == '/reset':
+                    try:
+                        # Delete from DB
+                        db.delete_chat_settings(chat_id)
+                        # Delete in-memory conversation state
+                        if chat_id in conversations:
+                            del conversations[chat_id]
+                        app.logger.info(f"Reset chat settings and conversation for chat_id: {chat_id}")
+                        send_telegram_message(chat_id, "Language settings have been reset. Please specify 2 or 3 languages to begin.")
+                    except Exception as e:
+                        app.logger.error(f"Error during reset for chat_id {chat_id}: {e}")
+                        send_telegram_message(chat_id, "Sorry, there was an error trying to reset the settings.")
+                    return # Stop processing this message further
+
                 # persist last user message for fallback parsing later
                 try:
                     last_user_message[chat_id] = user_message

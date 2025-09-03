@@ -242,6 +242,9 @@ def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_i
                 except Exception:
                     pass
                 # forward each activity if not seen before
+                # Avoid forwarding raw setup confirmations from Copilot; send one canonical
+                # confirmation message when parsing/persisting succeeds.
+                sent_setup_confirmation = False
                 for act in activities:
                     act_id = act.get('id')
                     text = act.get('text')
@@ -250,6 +253,19 @@ def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_i
                     if act_id in recent_activity_ids[chat_id]:
                         continue
                     recent_activity_ids[chat_id].append(act_id)
+                    parsed = False
+                    try:
+                        parsed = parse_and_persist_setup(chat_id, text)
+                    except Exception:
+                        parsed = False
+                    if parsed:
+                        try:
+                            if not sent_setup_confirmation:
+                                send_telegram_message(chat_id, "Language settings saved. You can now send messages for translation.", reply_markup=get_main_menu_markup())
+                                sent_setup_confirmation = True
+                        except Exception:
+                            pass
+                        continue
                     try:
                         send_telegram_message(chat_id, text)
                     except Exception:
@@ -497,6 +513,10 @@ def telegram_webhook():
                 while elapsed < POLL_TIMEOUT:
                     activities, nw = get_copilot_response(session['conv_id'], session['token'], new_watermark, user_from_id=session.get('from_id', str(chat_id)))
                     if activities:
+                        # If Copilot returns several activities, avoid forwarding raw setup/confirmation
+                        # messages that may be localized or duplicated. Instead, parse and persist
+                        # setup confirmations and send one canonical confirmation message.
+                        setup_confirmed_sent = False
                         for act in activities:
                             act_id = act.get('id')
                             text = act.get('text')
@@ -505,12 +525,23 @@ def telegram_webhook():
                             if act_id in recent_activity_ids[chat_id]:
                                 continue
                             recent_activity_ids[chat_id].append(act_id)
-                            # Try central helper to parse Copilot setup confirmation and persist settings
+                            # Try parsing/persisting setup confirmation; if parsing succeeds,
+                            # send a single canonical confirmation and skip forwarding the raw text.
+                            parsed = False
                             try:
-                                # Only attempt to parse/persist when Copilot itself sends a confirmation message
-                                parse_and_persist_setup(chat_id, text)
+                                parsed = parse_and_persist_setup(chat_id, text)
                             except Exception:
-                                pass
+                                parsed = False
+                            if parsed:
+                                try:
+                                    if not setup_confirmed_sent:
+                                        send_telegram_message(chat_id, "Language settings saved. You can now send messages for translation.", reply_markup=get_main_menu_markup())
+                                        setup_confirmed_sent = True
+                                except Exception:
+                                    pass
+                                # do not forward the original Copilot confirmation text
+                                continue
+                            # normal forwarding for non-setup activities
                             send_telegram_message(chat_id, text)
                         new_watermark = nw
                         bot_response = True

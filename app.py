@@ -17,7 +17,15 @@ load_dotenv()
 # --- НАСТРОЙКИ: загружаются из файла .env ---
 # 1. Токен вашего Telegram бота от @BotFather
 TELEGRAM_API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
-# ... (остальные переменные) ...
+
+# 2. Секрет вашего бота из Copilot Studio (Settings -> Channels -> Direct Line)
+DIRECT_LINE_SECRET = os.getenv("DIRECT_LINE_SECRET")
+
+# 3. URL для получения токена Direct Line.
+DIRECT_LINE_ENDPOINT = "https://directline.botframework.com/v3/directline/conversations"
+
+# URL для отправки сообщений в Telegram
+TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendMessage"
 # ---------------------------------------------
 # Local debug fallback: when DEBUG_LOCAL=1, messages will be printed to console
 DEBUG_LOCAL = os.getenv('DEBUG_LOCAL', '0') == '1'

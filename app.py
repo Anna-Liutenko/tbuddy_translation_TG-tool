@@ -8,6 +8,8 @@ from datetime import datetime
 import re
 import json
 import logging
+from logging.handlers import RotatingFileHandler
+import sys
 
 # Загружаем переменные из файла .env
 load_dotenv()
@@ -15,15 +17,7 @@ load_dotenv()
 # --- НАСТРОЙКИ: загружаются из файла .env ---
 # 1. Токен вашего Telegram бота от @BotFather
 TELEGRAM_API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
-
-# 2. Секрет вашего бота из Copilot Studio (Settings -> Channels -> Direct Line)
-DIRECT_LINE_SECRET = os.getenv("DIRECT_LINE_SECRET")
-
-# 3. URL для получения токена Direct Line.
-DIRECT_LINE_ENDPOINT = "https://directline.botframework.com/v3/directline/conversations"
-
-# URL для отправки сообщений в Telegram
-TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendMessage"
+# ... (остальные переменные) ...
 # ---------------------------------------------
 # Local debug fallback: when DEBUG_LOCAL=1, messages will be printed to console
 DEBUG_LOCAL = os.getenv('DEBUG_LOCAL', '0') == '1'
@@ -31,9 +25,36 @@ DEBUG_VERBOSE = os.getenv('DEBUG_VERBOSE', '0') == '1'
 
 # Инициализация веб-сервера Flask
 app = Flask(__name__)
-# Ensure app logger prints INFO/DEBUG to console
-logging.basicConfig(level=logging.INFO)
-app.logger.setLevel(logging.INFO)
+
+# --- Настройка логирования ---
+LOG_FILE = os.getenv('LOG_FILE', 'run.log')  # По умолчанию пишет в run.log
+LOG_LEVEL_STR = os.getenv('LOG_LEVEL', 'INFO').upper()
+LOG_LEVEL = getattr(logging, LOG_LEVEL_STR, logging.INFO)
+
+# Убираем стандартные обработчики Flask
+app.logger.handlers.clear()
+
+# Настраиваем форматтер
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s [in %(pathname)s:%(lineno)d]')
+
+# Обработчик для вывода в консоль (stdout)
+stream_handler = logging.StreamHandler(sys.stdout)
+stream_handler.setFormatter(formatter)
+app.logger.addHandler(stream_handler)
+
+# Обработчик для записи в ротируемый файл, если LOG_FILE указан
+if LOG_FILE:
+    try:
+        # 10 MB на файл, храним 5 старых файлов
+        file_handler = RotatingFileHandler(LOG_FILE, maxBytes=10*1024*1024, backupCount=5)
+        file_handler.setFormatter(formatter)
+        app.logger.addHandler(file_handler)
+    except Exception as e:
+        app.logger.error(f"Не удалось настроить логирование в файл {LOG_FILE}: {e}")
+
+app.logger.setLevel(LOG_LEVEL)
+# --- Конец настройки логирования ---
 
 # Словарь для хранения активных диалогов.
 # В реальном приложении лучше использовать базу данных (например, Redis или SQLite).

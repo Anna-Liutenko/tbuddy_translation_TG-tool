@@ -285,11 +285,14 @@ def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_i
 
 
 def get_main_menu_markup():
-    """Return a ReplyKeyboardMarkup dict with a single 'Меню' button."""
+    """Return an InlineKeyboardMarkup dict with a single compact 'Меню' button.
+
+    Inline buttons are smaller and attached to the message (not full-screen),
+    which matches the desired "small button on the side" UX.
+    The button uses callback_data 'menu' which we handle in the webhook.
+    """
     return {
-        'keyboard': [[{'text': 'Меню'}]],
-        'resize_keyboard': True,
-        'one_time_keyboard': False
+        'inline_keyboard': [[{'text': 'Меню', 'callback_data': 'menu'}]]
     }
 
 def start_direct_line_conversation():
@@ -433,6 +436,40 @@ def telegram_webhook():
         try:
             if not update_obj:
                 app.logger.warning("Empty update_obj in background worker")
+                return
+
+            # Handle inline button callbacks (callback_query) such as the compact 'Меню' button
+            if 'callback_query' in update_obj:
+                cq = update_obj['callback_query']
+                data = cq.get('data')
+                cq_id = cq.get('id')
+                # Determine chat id: prefer the message.chat.id if present, else fall back to from.id
+                chat_id = None
+                try:
+                    if cq.get('message') and cq['message'].get('chat'):
+                        chat_id = cq['message']['chat']['id']
+                except Exception:
+                    chat_id = None
+                if not chat_id:
+                    chat_id = cq.get('from', {}).get('id')
+
+                # Acknowledge the callback quickly so the client stops showing the loading state
+                try:
+                    answer_url = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/answerCallbackQuery"
+                    requests.post(answer_url, json={'callback_query_id': cq_id, 'text': 'Opening menu...', 'show_alert': False}, timeout=3)
+                except Exception:
+                    pass
+
+                if data == 'menu' and chat_id:
+                    try:
+                        help_text = (
+                            "Меню:\n"
+                            "/reset — Сбросить настройки языка\n"
+                            "Отправьте 2 или 3 языка (например: русский, английский) чтобы начать перевод."
+                        )
+                        send_telegram_message(chat_id, help_text)
+                    except Exception:
+                        pass
                 return
 
             if "message" in update_obj and "text" in update_obj["message"]:

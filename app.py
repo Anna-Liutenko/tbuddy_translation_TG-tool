@@ -238,6 +238,15 @@ def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_i
         except Exception:
             pass
 
+
+def get_main_menu_markup():
+    """Return a ReplyKeyboardMarkup dict with a single 'Меню' button."""
+    return {
+        'keyboard': [[{'text': 'Меню'}]],
+        'resize_keyboard': True,
+        'one_time_keyboard': False
+    }
+
 def start_direct_line_conversation():
     """Начинает новый диалог с ботом Copilot Studio и возвращает токен и ID диалога."""
     headers = {
@@ -385,8 +394,8 @@ def telegram_webhook():
                 chat_id = update_obj["message"]["chat"]["id"]
                 user_message = update_obj["message"]["text"]
 
-                # Handle the /reset command
-                if user_message.strip() == '/reset':
+                # Handle the /reset command (accept '/reset' and '/reset@botname')
+                if re.match(r'^/reset(\@\S+)?\s*$', user_message.strip(), flags=re.IGNORECASE):
                     try:
                         # Delete from DB
                         db.delete_chat_settings(chat_id)
@@ -394,11 +403,24 @@ def telegram_webhook():
                         if chat_id in conversations:
                             del conversations[chat_id]
                         app.logger.info(f"Reset chat settings and conversation for chat_id: {chat_id}")
-                        send_telegram_message(chat_id, "Language settings have been reset. Please specify 2 or 3 languages to begin.")
+                        send_telegram_message(chat_id, "Language settings have been reset. Please specify 2 or 3 languages to begin.", reply_markup=get_main_menu_markup())
                     except Exception as e:
                         app.logger.error(f"Error during reset for chat_id {chat_id}: {e}")
-                        send_telegram_message(chat_id, "Sorry, there was an error trying to reset the settings.")
+                        send_telegram_message(chat_id, "Sorry, there was an error trying to reset the settings.", reply_markup=get_main_menu_markup())
                     return # Stop processing this message further
+
+                # Handle the 'Меню' keyboard button
+                if isinstance(user_message, str) and user_message.strip().lower() == 'меню':
+                    try:
+                        help_text = (
+                            "Меню:\n"
+                            "/reset — Сбросить настройки языка\n"
+                            "Отправьте 2 или 3 языка (например: русский, английский) чтобы начать перевод."
+                        )
+                        send_telegram_message(chat_id, help_text, reply_markup=get_main_menu_markup())
+                    except Exception:
+                        pass
+                    return
 
                 # persist last user message for fallback parsing later
                 try:
@@ -523,12 +545,22 @@ def dump_settings():
     except Exception as e:
         return jsonify(error=str(e)), 500
 
-def send_telegram_message(chat_id, text):
-    """Отправляет текстовое сообщение в указанный чат Telegram."""
+def send_telegram_message(chat_id, text, reply_markup: dict = None):
+    """Отправляет текстовое сообщение в указанный чат Telegram.
+
+    Optional `reply_markup` is a dict matching Telegram's ReplyKeyboardMarkup
+    or InlineKeyboardMarkup structures and will be JSON-encoded when present.
+    """
     payload = {
         'chat_id': chat_id,
         'text': text
     }
+    if reply_markup is not None:
+        try:
+            payload['reply_markup'] = json.dumps(reply_markup, ensure_ascii=False)
+        except Exception:
+            # fallback: ignore invalid reply_markup
+            app.logger.debug('Invalid reply_markup provided, ignoring')
     # If DEBUG_LOCAL is enabled, don't call Telegram — just print to console for debugging
     if DEBUG_LOCAL:
         app.logger.info("DEBUG_LOCAL enabled — would send to chat %s: %s", chat_id, text)

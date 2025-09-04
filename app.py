@@ -88,40 +88,27 @@ DB_PATH = os.path.join(os.path.dirname(__file__), 'chat_settings.db')
 import db
 
 
-def parse_and_persist_setup(chat_id, text):
+def parse_and_persist_setup(chat_id, text, persist=True):
     """Try to extract language names from Copilot's setup confirmation and persist them.
 
-    Returns True if something was parsed and persisted, False otherwise.
+    If persist=False, it only checks if the text is a valid confirmation without saving.
+    Returns True if something was parsed, False otherwise.
     """
     try:
         if not isinstance(text, str):
             return False
 
-        # CRITICAL FIX: Do not try to parse a question as a confirmation.
+        # CRITICAL: Do not try to parse a question as a confirmation.
         if is_language_question(text):
-            app.logger.info("Skipping parse for chat %s: text is a language question.", chat_id)
             return False
 
-        # Guard against parsing translation blocks
-        if '\n' in text or text.count(':') >= 2:
-            if re.search(r'^[a-z]{2,3}:', text, re.MULTILINE):
-                app.logger.info("Skipping parse for chat %s: looks like a translation block.", chat_id)
-                return False
-
+        # More robust check for final confirmation message
         lowered = text.lower()
-        # Ignore messages that clearly indicate failure or are not setup-related.
-        negative_markers = [
-            'no languages mentioned', 'no languages are mentioned', 'no language was specified',
-            'i can only translate', 'sorry', 'unfortunately', 'error'
-        ]
-        if any(marker in lowered for marker in negative_markers):
-            app.logger.info("Ignoring negative/non-setup text for chat %s: %s", chat_id, text[:120])
+        if 'setup is complete' not in lowered and 'now we speak' not in lowered:
             return False
 
         # More robust language extraction
         s = text
-        # Remove instructional prefixes
-        s = re.sub(r'^(write|specify|enter|please write|please specify)\s*\d*\s*languages?:\s*', '', s, flags=re.IGNORECASE).strip()
         # Remove confirmation prefixes
         s = re.sub(r'^(setup is complete\.|thanks!|great!)\s*', '', s, flags=re.IGNORECASE).strip()
         s = re.sub(r'^now we speak\s*', '', s, flags=re.IGNORECASE).strip()
@@ -135,14 +122,16 @@ def parse_and_persist_setup(chat_id, text):
         parts = re.split(r'[,;]| and | or ', s)
         names = [p.strip().strip('.,:; ') for p in parts if p and p.strip() and len(p.strip()) > 1]
 
-        if len(names) < 2:
-            app.logger.info("Did not find at least 2 valid language names in text for chat %s: %s", chat_id, text[:120])
+        if len(names) < 1: # Even one language is a valid confirmation
             return False
 
         lang_names = ', '.join(names)
-        app.logger.info("SUCCESS: Parsed and persisting language names for chat %s: [%s]", chat_id, lang_names)
-        db.upsert_chat_settings(chat_id, '', lang_names, datetime.utcnow().isoformat())
-        return True
+        
+        if persist:
+            app.logger.info("SUCCESS: Parsed and persisting language names for chat %s: [%s]", chat_id, lang_names)
+            db.upsert_chat_settings(chat_id, '', lang_names, datetime.utcnow().isoformat())
+        
+        return True # Return True if parsing was successful
     except Exception as e:
         app.logger.error("Error in parse_and_persist_setup for chat %s: %s", chat_id, e, exc_info=True)
         return False
@@ -176,35 +165,23 @@ def should_skip_forwarding(text):
     """
     try:
         if not text or not isinstance(text, str):
-            return False
+            return True
+
+        # The only message we want to skip is the *original* confirmation from Copilot,
+        # because we are going to send our own canonical version.
+        lowered = text.lower()
+        if 'setup is complete' in lowered and 'now we speak' in lowered:
+            app.logger.info("SKIP: Text is a setup confirmation that will be handled отдельно: '%s'", text)
+            return True
         
-        lw = text.lower()
-
-        # CRITICAL FIX: First, check if it's the final confirmation. This message should NEVER be skipped.
-        if 'setup is complete' in lw and 'now we speak' in lw:
-            app.logger.debug("ALLOW: Text is the final setup confirmation: '%s'", text)
-            return False
-
-        # Condition 1: Skip explicit questions about languages (we handle the flow).
-        if is_language_question(text):
-            app.logger.info("SKIP: Text is a language question: '%s'", text)
-            return True
-
-        # Condition 2: Skip short, instructional phrases that are part of the setup flow.
-        instructional_phrases = [
-            'write 2 or 3 languages', 'write 2 languages', 'specify the languages',
-            'please provide the languages', "send your message and i'll translate it"
-        ]
-        # This check is now safer because the final confirmation is allowed before this.
-        if any(phrase in lw for phrase in instructional_phrases):
-            app.logger.info("SKIP: Text contains a setup instruction: '%s'", text)
-            return True
-
+        # We no longer block any other messages. The bridge must be transparent.
         app.logger.debug("FORWARD: Text does not meet skip conditions: '%s'", text)
         return False
     except Exception as e:
         app.logger.error("Error in should_skip_forwarding: %s", e, exc_info=True)
-        return False
+        return False # Fail open (forward) if error
+
+# ...
 
 db.init_db()
 
@@ -543,18 +520,24 @@ def telegram_webhook():
 
             app.logger.info("Обработка сообщения бота для чата %s: '%s'", chat_id, bot_text)
 
-            if parse_and_persist_setup(chat_id, bot_text):
+            # NEW LOGIC:
+            # First, try to parse and persist. This will only succeed on the final confirmation.
+            if parse_and_persist_setup(chat_id, bot_text, persist=True):
                 app.logger.info("Настройка завершена для чата %s. Отправка канонического подтверждения.", chat_id)
                 settings = db.get_chat_settings(chat_id)
                 if settings and settings.get('language_names'):
+                    # Send our own clean confirmation message
                     send_telegram_message(chat_id, f"Спасибо! Настройка завершена. Теперь мы говорим на {settings['language_names']}.\nОтправьте свое сообщение, и я переведу его.")
-                    send_reply_keyboard_remove(chat_id)
+                # Since we handled it, we don't forward the original message.
                 continue
 
+            # Second, check if we should forward other messages.
+            # This will now correctly forward the language question.
             if should_skip_forwarding(bot_text):
                 app.logger.info("Пропуск пересылки сообщения бота в чат %s: '%s'", chat_id, bot_text)
                 continue
 
+            # If it's not a confirmation and not skippable, forward it.
             app.logger.info("Пересылка сообщения бота в чат %s: '%s'", chat_id, bot_text)
             send_telegram_message(chat_id, bot_text)
 

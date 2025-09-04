@@ -98,10 +98,6 @@ def parse_and_persist_setup(chat_id, text, persist=True):
         if not isinstance(text, str):
             return False
 
-        # CRITICAL: Do not try to parse a question as a confirmation.
-        if is_language_question(text):
-            return False
-
         # More robust check for final confirmation message
         lowered = text.lower()
         if 'setup is complete' not in lowered and 'now we speak' not in lowered:
@@ -137,52 +133,6 @@ def parse_and_persist_setup(chat_id, text, persist=True):
         return False
 
 
-def is_language_question(text):
-    """Return True if the bot text looks like a question asking the user to provide languages."""
-    try:
-        if not text or not isinstance(text, str):
-            return False
-        lw = text.lower()
-        # must mention 'language' or 'languages'
-        if 'language' not in lw and 'languages' not in lw:
-            return False
-        triggers = ['what', "what's", 'which', 'prefer', 'write', 'specify', 'please', 'put']
-        if any(t in lw for t in triggers):
-            return True
-        # explicit prompt forms
-        if 'write 2' in lw or '2 or 3' in lw or 'write 3' in lw:
-            return True
-        return False
-    except Exception:
-        return False
-
-
-def should_skip_forwarding(text):
-    """Return True if the given Copilot text should NOT be forwarded to the Telegram user.
-
-    This is a crucial function to prevent the bot from asking redundant questions
-    or sending confusing, intermediate messages from the Copilot backend.
-    """
-    try:
-        if not text or not isinstance(text, str):
-            return True
-
-        # The only message we want to skip is the *original* confirmation from Copilot,
-        # because we are going to send our own canonical version.
-        lowered = text.lower()
-        if 'setup is complete' in lowered and 'now we speak' in lowered:
-            app.logger.info("SKIP: Text is a setup confirmation that will be handled отдельно: '%s'", text)
-            return True
-        
-        # We no longer block any other messages. The bridge must be transparent.
-        app.logger.debug("FORWARD: Text does not meet skip conditions: '%s'", text)
-        return False
-    except Exception as e:
-        app.logger.error("Error in should_skip_forwarding: %s", e, exc_info=True)
-        return False # Fail open (forward) if error
-
-# ...
-
 db.init_db()
 
 def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_id, total_timeout=120.0, interval=1.0):
@@ -204,56 +154,24 @@ def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_i
                 except Exception:
                     pass
                 # forward each activity if not seen before
-                # Avoid forwarding raw setup confirmations from Copilot; send one canonical
-                # confirmation message when parsing/persisting succeeds.
-                sent_setup_confirmation = False
                 for act in activities:
                     act_id = act.get('id')
-                    text = act.get('text')
+                    text = act.get('text', '').strip()
                     if not act_id or not text:
                         continue
                     if act_id in recent_activity_ids[chat_id]:
                         continue
                     recent_activity_ids[chat_id].append(act_id)
-                    # If this Copilot activity is a language-question or short guidance,
-                    # skip it entirely (don't try to parse or forward) to avoid duplicates.
-                    try:
-                        if should_skip_forwarding(text):
-                            app.logger.info("Skipping Copilot guidance/question (pre-parse) for chat %s: %s", chat_id, text[:140])
-                            continue
-                    except Exception:
-                        pass
 
-                    parsed = False
-                    try:
-                        parsed = parse_and_persist_setup(chat_id, text)
-                    except Exception:
-                        parsed = False
-                    if parsed:
-                        try:
-                            if not sent_setup_confirmation:
-                                # remove any lingering reply keyboard first
-                                try:
-                                    send_reply_keyboard_remove(chat_id)
-                                except Exception:
-                                    pass
-                                send_telegram_message(chat_id, "Language settings saved. You can now send messages for translation.")
-                                sent_setup_confirmation = True
-                        except Exception:
-                            pass
-                        continue
-                    # Avoid forwarding Copilot prompts that are asking the user to provide languages
-                    try:
-                        if should_skip_forwarding(text):
-                            app.logger.info("Skipping forwarding Copilot language-question/notice for chat %s: %s", chat_id, text[:140])
-                            continue
-                    except Exception:
-                        pass
-                    try:
-                        send_telegram_message(chat_id, text)
-                    except Exception:
-                        pass
-                app.logger.info("Long-poller forwarded %d activities for chat=%s", len(activities), chat_id)
+                    # Пытаемся извлечь и сохранить настройки, если это сообщение-подтверждение.
+                    if parse_and_persist_setup(chat_id, text, persist=True):
+                        app.logger.info("Распознано и сохранено подтверждение настройки (long-poll) для чата %s.", chat_id)
+
+                    # Всегда пересылаем оригинальное сообщение от бота пользователю.
+                    app.logger.info("Пересылка сообщения бота в чат (long-poll) %s: '%s'", chat_id, text)
+                    send_telegram_message(chat_id, text)
+
+                app.logger.info("Long-poller обработал %d активностей для чата=%s", len(activities), chat_id)
                 break
             nw = new_nw
             time.sleep(interval)
@@ -518,26 +436,11 @@ def telegram_webhook():
             if not bot_text:
                 continue
 
-            app.logger.info("Обработка сообщения бота для чата %s: '%s'", chat_id, bot_text)
-
-            # NEW LOGIC:
-            # First, try to parse and persist. This will only succeed on the final confirmation.
+            # Пытаемся извлечь и сохранить настройки, если это сообщение-подтверждение.
             if parse_and_persist_setup(chat_id, bot_text, persist=True):
-                app.logger.info("Настройка завершена для чата %s. Отправка канонического подтверждения.", chat_id)
-                settings = db.get_chat_settings(chat_id)
-                if settings and settings.get('language_names'):
-                    # Send our own clean confirmation message
-                    send_telegram_message(chat_id, f"Спасибо! Настройка завершена. Теперь мы говорим на {settings['language_names']}.\nОтправьте свое сообщение, и я переведу его.")
-                # Since we handled it, we don't forward the original message.
-                continue
+                app.logger.info("Распознано и сохранено подтверждение настройки (из немедленного ответа) для чата %s.", chat_id)
 
-            # Second, check if we should forward other messages.
-            # This will now correctly forward the language question.
-            if should_skip_forwarding(bot_text):
-                app.logger.info("Пропуск пересылки сообщения бота в чат %s: '%s'", chat_id, bot_text)
-                continue
-
-            # If it's not a confirmation and not skippable, forward it.
+            # Всегда пересылаем оригинальное сообщение от бота пользователю.
             app.logger.info("Пересылка сообщения бота в чат %s: '%s'", chat_id, bot_text)
             send_telegram_message(chat_id, bot_text)
 
@@ -673,7 +576,7 @@ if __name__ == '__main__':
     if not DIRECT_LINE_SECRET:
         app.logger.warning("DIRECT_LINE_SECRET is not set. Direct Line calls will fail.")
 
-    # Запуск в production: рекомендуем использовать Waitress на Windows (простая и надёжная)
+    # Запуск в production: рекомендуем использовать Waitress на  Windows (простая и надёжная)
     # Установите dependency: pip install waitress
     port = int(os.getenv('PORT', '8080'))
     use_waitress = os.getenv('USE_WAITRESS', '1') == '1'

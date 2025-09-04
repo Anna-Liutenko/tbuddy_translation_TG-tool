@@ -403,6 +403,19 @@ def telegram_webhook():
                 'is_polling': False
             }
             app.logger.info("Started new DirectLine conversation for chat %s: %s", chat_id, conv_id)
+            
+            # КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Проверяем, есть ли уже настроенные языки в БД
+            # Если есть - значит пользователь уже прошел настройку и отправляет сообщение для перевода
+            existing_settings = db.get_chat_settings(chat_id)
+            if existing_settings and existing_settings.get('language_names'):
+                app.logger.info("Found existing language settings for chat %s: %s. This is a translation request, not setup.", 
+                              chat_id, existing_settings.get('language_names'))
+                # Отправляем настройки в новый диалог перед отправкой сообщения пользователя
+                setup_message = f"start\nEnglish, Russian, Korean"  # Эмулируем быструю настройку
+                app.logger.info("Sending quick setup to new conversation for chat %s", chat_id)
+                send_message_to_copilot(conv_id, token, setup_message, from_id=user_from_id)
+                # Даем время Copilot обработать настройку
+                time.sleep(1.5)
         else:
             app.logger.error("Failed to start DirectLine conversation for chat %s.", chat_id)
             send_telegram_message(chat_id, "Извините, я не смог подключиться к сервису перевода. Пожалуйста, попробуйте еще раз позже.")

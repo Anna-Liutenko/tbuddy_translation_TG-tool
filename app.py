@@ -97,6 +97,11 @@ def parse_and_persist_setup(chat_id, text):
         if not isinstance(text, str):
             return False
 
+        # CRITICAL FIX: Do not try to parse a question as a confirmation.
+        if is_language_question(text):
+            app.logger.info("Skipping parse for chat %s: text is a language question.", chat_id)
+            return False
+
         # Guard against parsing translation blocks
         if '\n' in text or text.count(':') >= 2:
             if re.search(r'^[a-z]{2,3}:', text, re.MULTILINE):
@@ -175,28 +180,25 @@ def should_skip_forwarding(text):
         
         lw = text.lower()
 
-        # Condition 1: Skip explicit questions about languages.
-        # This is the most important rule to prevent the "double question" loop.
+        # CRITICAL FIX: First, check if it's the final confirmation. This message should NEVER be skipped.
+        if 'setup is complete' in lw and 'now we speak' in lw:
+            app.logger.debug("ALLOW: Text is the final setup confirmation: '%s'", text)
+            return False
+
+        # Condition 1: Skip explicit questions about languages (we handle the flow).
         if is_language_question(text):
             app.logger.info("SKIP: Text is a language question: '%s'", text)
             return True
 
         # Condition 2: Skip short, instructional phrases that are part of the setup flow.
-        # These are often redundant or confusing when the user has already provided input.
         instructional_phrases = [
             'write 2 or 3 languages', 'write 2 languages', 'specify the languages',
-            'please provide the languages', 'send your message and i\'ll translate it'
+            'please provide the languages', "send your message and i'll translate it"
         ]
+        # This check is now safer because the final confirmation is allowed before this.
         if any(phrase in lw for phrase in instructional_phrases):
             app.logger.info("SKIP: Text contains a setup instruction: '%s'", text)
             return True
-            
-        # Note: do NOT skip full confirmation lines like "Thanks! Setup is complete. Now we speak X, Y." here
-        # because we want parse_and_persist_setup to see and persist the languages. Those confirmations will
-        # be suppressed from forwarding by the parsing logic (which sends a single canonical message).
-        if 'setup is complete' in lw and 'now we speak' in lw:
-            app.logger.debug("ALLOW parse: Text looks like setup confirmation (will be parsed): '%s'", text)
-            return False
 
         app.logger.debug("FORWARD: Text does not meet skip conditions: '%s'", text)
         return False

@@ -325,7 +325,7 @@ def start_direct_line_conversation():
             app.logger.warning("conversationId missing in Direct Line response")
             return None, None
         # Return (token, conversationId) - note order expected by callers
-        return token, conv_id
+        return conv_id, token
     else:
         # avoid logging potentially large bodies without truncation
         body = (response.text or '')[:200]

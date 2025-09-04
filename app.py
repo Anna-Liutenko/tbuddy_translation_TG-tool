@@ -265,7 +265,7 @@ def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_i
                                     send_reply_keyboard_remove(chat_id)
                                 except Exception:
                                     pass
-                                send_telegram_message(chat_id, "Language settings saved. You can now send messages for translation.", reply_markup=get_main_menu_markup())
+                                send_telegram_message(chat_id, "Language settings saved. You can now send messages for translation.")
                                 sent_setup_confirmation = True
                         except Exception:
                             pass
@@ -295,9 +295,9 @@ def get_main_menu_markup():
     which matches the desired "small button on the side" UX.
     The button uses callback_data 'menu' which we handle in the webhook.
     """
-    return {
-        'inline_keyboard': [[{'text': 'Меню', 'callback_data': 'menu'}]]
-    }
+    # keep definition for backward compatibility but keep UI-minimal — callers should
+    # avoid attaching this markup; we will not send it by default anymore.
+    return {'inline_keyboard': [[{'text': 'Меню', 'callback_data': 'menu'}]]}
 
 def start_direct_line_conversation():
     """Начинает новый диалог с ботом Copilot Studio и возвращает токен и ID диалога."""
@@ -489,24 +489,12 @@ def telegram_webhook():
                         if chat_id in conversations:
                             del conversations[chat_id]
                         app.logger.info(f"Reset chat settings and conversation for chat_id: {chat_id}")
-                        send_telegram_message(chat_id, "Language settings have been reset. Please specify 2 or 3 languages to begin.", reply_markup=get_main_menu_markup())
+                        # Send the same response as /start: prompt for languages and keep flow identical
+                        send_telegram_message(chat_id, "Language settings have been reset. Please specify 2 or 3 languages to begin.")
                     except Exception as e:
                         app.logger.error(f"Error during reset for chat_id {chat_id}: {e}")
-                        send_telegram_message(chat_id, "Sorry, there was an error trying to reset the settings.", reply_markup=get_main_menu_markup())
+                        send_telegram_message(chat_id, "Sorry, there was an error trying to reset the settings.")
                     return # Stop processing this message further
-
-                # Handle the 'Меню' keyboard button
-                if isinstance(user_message, str) and user_message.strip().lower() == 'меню':
-                    try:
-                        help_text = (
-                            "Меню:\n"
-                            "/reset — Сбросить настройки языка\n"
-                            "Отправьте 2 или 3 языка (например: русский, английский) чтобы начать перевод."
-                        )
-                        send_telegram_message(chat_id, help_text, reply_markup=get_main_menu_markup())
-                    except Exception:
-                        pass
-                    return
 
                 # persist last user message for fallback parsing later
                 try:
@@ -576,7 +564,7 @@ def telegram_webhook():
                             if parsed:
                                 try:
                                     if not setup_confirmed_sent:
-                                        send_telegram_message(chat_id, "Language settings saved. You can now send messages for translation.", reply_markup=get_main_menu_markup())
+                                        send_telegram_message(chat_id, "Language settings saved. You can now send messages for translation.")
                                         setup_confirmed_sent = True
                                 except Exception:
                                     pass
@@ -746,6 +734,18 @@ if __name__ == '__main__':
         try:
             from waitress import serve
             app.logger.info("Starting with Waitress on 0.0.0.0:%s", port)
+            # Register bot commands so Telegram clients show slash suggestions (like BotFather)
+            try:
+                if TELEGRAM_API_TOKEN:
+                    cmds_url = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/setMyCommands"
+                    # provide the most common commands the bot supports
+                    commands = [
+                        {"command": "start", "description": "Start or reconfigure language settings"},
+                        {"command": "reset", "description": "Reset language settings"}
+                    ]
+                    requests.post(cmds_url, json={"commands": commands}, timeout=3)
+            except Exception:
+                pass
             serve(app, host='0.0.0.0', port=port)
         except Exception as e:
             app.logger.exception("Waitress failed to start, falling back to Flask dev server.")

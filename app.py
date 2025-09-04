@@ -287,6 +287,12 @@ def get_copilot_response(conversation_id, token, last_watermark, user_from_id="u
         activities = data.get('activities', []) if isinstance(data, dict) else []
         # Filter activities to only include actual messages from the bot with text content.
         # This avoids processing typing indicators or other non-message events.
+        # TEMPORARY DEBUG: Log all activities to see what we're missing
+        for act in activities:
+            app.logger.info("DEBUG ACTIVITY: type=%s, from_id=%s, text=%s, has_text=%s", 
+                          act.get('type'), act.get('from', {}).get('id'), 
+                          repr(act.get('text', '')[:100]), bool(act.get('text', '').strip()))
+        
         bot_activities = [
             act for act in activities 
             if act.get('type') == 'message' and 

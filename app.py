@@ -278,7 +278,8 @@ def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_i
     finally:
         # clear polling flag
         try:
-            conversations[chat_id]['polling'] = False
+            if chat_id in conversations:
+                conversations[chat_id]['polling'] = False
         except Exception:
             pass
 
@@ -601,7 +602,11 @@ def telegram_webhook():
                     elapsed = time.time() - start_ts
 
                 # update stored watermark even if no response
-                conversations[chat_id]['watermark'] = new_watermark
+                try:
+                    if chat_id in conversations:
+                        conversations[chat_id]['watermark'] = new_watermark
+                except Exception:
+                    pass
 
                 duration = time.time() - start_ts
                 app.logger.info(f"Processed message for chat={chat_id} duration={duration:.2f}s found_response={bool(bot_response)}")
@@ -616,8 +621,10 @@ def telegram_webhook():
                         pass
                     # start a background long-poller to catch delayed bot replies (if not already polling)
                     try:
-                        if not conversations[chat_id].get('polling'):
-                            conversations[chat_id]['polling'] = True
+                        # Use the local `session` reference so that concurrent deletion
+                        # of conversations[chat_id] (e.g. via /reset) won't raise KeyError.
+                        if not session.get('polling'):
+                            session['polling'] = True
                             import threading as _threading
                             lp = _threading.Thread(target=long_poll_for_activity, args=(session['conv_id'], session['token'], session.get('from_id', str(chat_id)), new_watermark, chat_id))
                             lp.daemon = True

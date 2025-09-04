@@ -188,10 +188,12 @@ def should_skip_forwarding(text):
             app.logger.info("SKIP: Text contains a setup instruction: '%s'", text)
             return True
             
-        # Condition 3: Skip the specific, confusing confirmation message that was causing issues.
+        # Note: do NOT skip full confirmation lines like "Thanks! Setup is complete. Now we speak X, Y." here
+        # because we want parse_and_persist_setup to see and persist the languages. Those confirmations will
+        # be suppressed from forwarding by the parsing logic (which sends a single canonical message).
         if 'setup is complete' in lw and 'now we speak' in lw:
-            app.logger.info("SKIP: Text is the confusing 'setup is complete' message: '%s'", text)
-            return True
+            app.logger.debug("ALLOW parse: Text looks like setup confirmation (will be parsed): '%s'", text)
+            return False
 
         app.logger.debug("FORWARD: Text does not meet skip conditions: '%s'", text)
         return False

@@ -29,6 +29,10 @@ DIRECT_LINE_ENDPOINT = "https://directline.botframework.com/v3/directline/conver
 # Local debug fallback: when DEBUG_LOCAL=1, messages will be printed to console
 DEBUG_LOCAL = os.getenv('DEBUG_LOCAL', '0') == '1'
 DEBUG_VERBOSE = os.getenv('DEBUG_VERBOSE', '0') == '1'
+# When enabled (set TELEGRAM_LOG_RESPONSES=1 in /etc/tbuddy/env), log full
+# Telegram HTTP request payload and response (status + body) at DEBUG level.
+# Use this temporarily for diagnostics; don't enable permanently in prod.
+TELEGRAM_LOG_RESPONSES = os.getenv('TELEGRAM_LOG_RESPONSES', '0') == '1'
 
 # Инициализация веб-сервера Flask
 app = Flask(__name__)
@@ -681,6 +685,18 @@ def send_telegram_message(chat_id, text, reply_markup: dict = None):
     except Exception:
         resp_text = '<unreadable response>'
 
+    # Detailed diagnostic logging (controlled by env var)
+    try:
+        if TELEGRAM_LOG_RESPONSES:
+            try:
+                # Log request payload (safe to include chat_id and truncated text)
+                app.logger.debug("Telegram HTTP request for chat=%s payload=%s", chat_id, json.dumps({k: payload[k] for k in ('chat_id','text','reply_markup') if k in payload}, ensure_ascii=False)[:2000])
+            except Exception:
+                app.logger.debug("Telegram HTTP request (unserializable payload) chat=%s", chat_id)
+            app.logger.debug("Telegram HTTP response for chat=%s status=%s body=%s", chat_id, response.status_code, (resp_text or '')[:20000])
+    except Exception:
+        pass
+
     if response.status_code == 200:
         try:
             j = response.json()
@@ -708,6 +724,19 @@ def send_reply_keyboard_remove(chat_id):
     except Exception as e:
         app.logger.debug("Failed to send ReplyKeyboardRemove for chat=%s: %s", chat_id, e)
         return False
+    # Extra diagnostic logging when enabled
+    try:
+        if TELEGRAM_LOG_RESPONSES:
+            try:
+                app.logger.debug("ReplyKeyboardRemove request payload for chat=%s payload=%s", chat_id, json.dumps(payload, ensure_ascii=False)[:2000])
+            except Exception:
+                app.logger.debug("ReplyKeyboardRemove request (unserializable) for chat=%s", chat_id)
+            try:
+                app.logger.debug("ReplyKeyboardRemove response for chat=%s status=%s body=%s", chat_id, response.status_code, response.text[:20000])
+            except Exception:
+                pass
+    except Exception:
+        pass
     try:
         j = response.json()
         ok = j.get('ok', False)

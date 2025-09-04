@@ -261,6 +261,11 @@ def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_i
                     if parsed:
                         try:
                             if not sent_setup_confirmation:
+                                # remove any lingering reply keyboard first
+                                try:
+                                    send_reply_keyboard_remove(chat_id)
+                                except Exception:
+                                    pass
                                 send_telegram_message(chat_id, "Language settings saved. You can now send messages for translation.", reply_markup=get_main_menu_markup())
                                 sent_setup_confirmation = True
                         except Exception:
@@ -674,25 +679,17 @@ def send_telegram_message(chat_id, text, reply_markup: dict = None):
         app.logger.debug("[LOCAL FALLBACK] chat=%s text=%s", chat_id, text)
         return True
 
+
+def send_reply_keyboard_remove(chat_id):
+    """Send a ReplyKeyboardRemove to hide any full-screen reply keyboard in Telegram client."""
+    rm = {'remove_keyboard': True}
+    payload = {'chat_id': chat_id, 'reply_markup': json.dumps(rm)}
     try:
         response = requests.post(TELEGRAM_URL, json=payload, timeout=5)
     except Exception as e:
-        app.logger.error("Exception when sending to Telegram for chat %s: %s", chat_id, e)
-        app.logger.debug("[LOCAL FALLBACK due to exception] chat=%s text=%s", chat_id, text)
+        app.logger.debug("Failed to send ReplyKeyboardRemove for chat=%s: %s", chat_id, e)
         return False
-
-    if response.status_code == 200:
-        app.logger.info("Telegram send succeeded chat=%s", chat_id)
-        return True
-    else:
-        # On error (for example chat not found), log and fallback to printing the message locally
-        try:
-            err_text = response.text
-        except Exception:
-            err_text = '<no-response-body>'
-        app.logger.warning("Ошибка отправки в Telegram: %s %s", response.status_code, (err_text or '')[:200])
-    app.logger.debug("[TELEGRAM ERROR fallback] status=%s chat=%s text=%s", response.status_code, chat_id, text)
-    return False
+    return response.status_code == 200
 
 if __name__ == '__main__':
     # Небольшая проверка переменных окружения — полезно ловить ошибки на старте

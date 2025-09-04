@@ -131,6 +131,12 @@ def parse_and_persist_setup(chat_id, text, persist=True):
         if persist:
             app.logger.info("SUCCESS: Parsed and persisting language names for chat %s: [%s]", chat_id, lang_names)
             db.upsert_chat_settings(chat_id, '', lang_names, datetime.utcnow().isoformat())
+            
+            # КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: Сбрасываем диалог после успешной настройки.
+            # Это заставляет приложение начать новый, чистый диалог для перевода.
+            if chat_id in conversations:
+                conversations.pop(chat_id, None)
+                app.logger.info("Conversation for chat %s has been reset after successful language setup.", chat_id)
         
         return True # Return True if parsing was successful
     except Exception as e:

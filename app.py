@@ -284,6 +284,15 @@ def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_i
                     if act_id in recent_activity_ids[chat_id]:
                         continue
                     recent_activity_ids[chat_id].append(act_id)
+                    # If this Copilot activity is a language-question or short guidance,
+                    # skip it entirely (don't try to parse or forward) to avoid duplicates.
+                    try:
+                        if should_skip_forwarding(text):
+                            app.logger.info("Skipping Copilot guidance/question (pre-parse) for chat %s: %s", chat_id, text[:140])
+                            continue
+                    except Exception:
+                        pass
+
                     parsed = False
                     try:
                         parsed = parse_and_persist_setup(chat_id, text)
@@ -595,6 +604,14 @@ def telegram_webhook():
                             recent_activity_ids[chat_id].append(act_id)
                             # Try parsing/persisting setup confirmation; if parsing succeeds,
                             # send a single canonical confirmation and skip forwarding the raw text.
+                            # Skip forwarding short guidance/questions before attempting parse
+                            try:
+                                if should_skip_forwarding(text):
+                                    app.logger.info("Skipping Copilot guidance/question (pre-parse) for chat %s: %s", chat_id, text[:140])
+                                    continue
+                            except Exception:
+                                pass
+
                             parsed = False
                             try:
                                 parsed = parse_and_persist_setup(chat_id, text)

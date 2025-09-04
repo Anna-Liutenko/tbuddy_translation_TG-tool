@@ -289,17 +289,6 @@ def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_i
             pass
 
 
-def get_main_menu_markup():
-    """Return an InlineKeyboardMarkup dict with a single compact 'Меню' button.
-
-    Inline buttons are smaller and attached to the message (not full-screen),
-    which matches the desired "small button on the side" UX.
-    The button uses callback_data 'menu' which we handle in the webhook.
-    """
-    # keep definition for backward compatibility but keep UI-minimal — callers should
-    # avoid attaching this markup; we will not send it by default anymore.
-    return {'inline_keyboard': [[{'text': 'Меню', 'callback_data': 'menu'}]]}
-
 def start_direct_line_conversation():
     """Начинает новый диалог с ботом Copilot Studio и возвращает токен и ID диалога."""
     headers = {
@@ -430,188 +419,135 @@ def get_copilot_response(conversation_id, token, last_watermark, user_from_id="u
 
 @app.route('/webhook', methods=['POST'])
 def telegram_webhook():
-    """Эта функция вызывается, когда Telegram присылает новое сообщение.
+    """Основной обработчик входящих сообщений от Telegram."""
+    data = request.get_json()
+    if DEBUG_VERBOSE:
+        app.logger.debug("Received Telegram webhook: %s", json.dumps(data, indent=2))
 
-    Обрабатываем входящую активность в фоне (thread) и возвращаем 200 сразу.
-    Это уменьшает вероятность 502/504 от reverse-proxy или провайдера из-за долгой обработки.
-    """
-    update = request.get_json(silent=True)
+    # 1. Извлекаем информацию только из текстовых сообщений
+    if 'message' not in data or 'text' not in data['message']:
+        app.logger.info("Webhook received a non-text message update. Ignoring.")
+        return jsonify(success=True)
 
-    def process_update(update_obj):
+    message = data['message']
+    chat_id = message['chat']['id']
+    user_from_id = message['from']['id']
+    text = message.get('text', '').strip()
+
+    if not text:
+        return jsonify(success=True)
+
+    app.logger.info("Processing text '%s' for chat_id %s", text, chat_id)
+    last_user_message[chat_id] = text
+
+    # 2. Обработка команды /reset
+    if text == '/reset':
+        app.logger.info("Processing /reset for chat %s. Clearing all state.", chat_id)
         try:
-            if not update_obj:
-                app.logger.warning("Empty update_obj in background worker")
-                return
+            db.delete_chat_settings(chat_id)
+            app.logger.info("Deleted DB settings for chat %s", chat_id)
+        except Exception as e:
+            app.logger.error("Error deleting DB settings for chat %s: %s", chat_id, e, exc_info=True)
+        
+        # Очищаем состояние в памяти
+        conversations.pop(chat_id, None)
+        last_user_message.pop(chat_id, None)
+        if chat_id in recent_activity_ids:
+            del recent_activity_ids[chat_id]
+        app.logger.info("Cleared in-memory state for chat %s", chat_id)
+        
+        # Запускаем логику настройки, как при /start
+        text = 'start'
 
-            data = update_obj
+    # 3. Обработка команды /start
+    if text == '/start':
+        text = 'start' # Убедимся, что текст именно 'start'
+        if chat_id in conversations:
+            app.logger.info("Clearing stale in-memory conversation for chat %s due to /start", chat_id)
+            conversations.pop(chat_id, None)
 
-            # Handle callback queries from inline buttons (e.g., menu)
-            if 'callback_query' in data:
-                callback_data = data['callback_query']['data']
-                chat_id = data['callback_query']['message']['chat']['id']
-                user_from_id = data['callback_query']['from']['id']
-                app.logger.info("Received callback_query from chat_id %s: %s", chat_id, callback_data)
-                # Treat 'menu' callback as a /reset command to restart the language setup
-                if callback_data == 'menu':
-                    text = '/reset'
-                else:
-                    # In the future, other callbacks can be handled here.
-                    # For now, just acknowledge to stop the loading indicator on the button.
-                    try:
-                        cb_query_id = data['callback_query']['id']
-                        cb_ack_url = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/answerCallbackQuery"
-                        requests.post(cb_ack_url, json={'callback_query_id': cb_query_id}, timeout=5)
-                    except Exception as e:
-                        app.logger.warning("Could not acknowledge callback query: %s", e)
-                    return jsonify(success=True) # We've handled it, no further processing needed.
+    # 4. Получаем или создаем диалог с Copilot Studio
+    if chat_id not in conversations:
+        app.logger.info("No active conversation for chat %s. Starting a new one.", chat_id)
+        
+        conv_id, token = start_direct_line_conversation()
+        if conv_id and token:
+            conversations[chat_id] = {
+                'id': conv_id,
+                'token': token,
+                'watermark': None,
+                'last_interaction': time.time(),
+                'is_polling': False
+            }
+            app.logger.info("Started new DirectLine conversation for chat %s: %s", chat_id, conv_id)
+        else:
+            app.logger.error("Failed to start DirectLine conversation for chat %s.", chat_id)
+            send_telegram_message(chat_id, "Извините, я не смог подключиться к сервису перевода. Пожалуйста, попробуйте еще раз позже.")
+            return jsonify(success=False)
+    
+    # 5. Отправляем сообщение в Copilot и получаем ответ
+    conv_id = conversations[chat_id]['id']
+    token = conversations[chat_id]['token']
+    last_watermark = conversations[chat_id]['watermark']
+    conversations[chat_id]['last_interaction'] = time.time()
 
-            # Handle /reset command: clear all state and restart
-            if text == '/reset':
-                app.logger.info("Processing /reset for chat %s. Clearing all state.", chat_id)
-                try:
-                    db.delete_chat_settings(chat_id)
-                    app.logger.info("Deleted DB settings for chat %s", chat_id)
-                except Exception as e:
-                    app.logger.error("Error deleting DB settings for chat %s: %s", chat_id, e, exc_info=True)
-                
-                # Clear all in-memory state for the chat
-                conversations.pop(chat_id, None)
-                last_user_message.pop(chat_id, None)
-                if chat_id in recent_activity_ids:
-                    del recent_activity_ids[chat_id]
-                app.logger.info("Cleared in-memory state for chat %s", chat_id)
-                
-                # Treat as a /start to trigger the setup flow
-                text = 'start'
+    activity_id = send_message_to_copilot(conv_id, token, text, from_id=user_from_id)
+    if activity_id:
+        recent_activity_ids[chat_id].append(activity_id)
+    else:
+        app.logger.warning("Не удалось отправить сообщение для чата %s. Предполагаем, что токен истек, начинаем новый разговор.", chat_id)
+        conversations.pop(chat_id, None)
+        send_telegram_message(chat_id, "Произошла ошибка соединения. Пожалуйста, отправьте свое сообщение еще раз.")
+        return jsonify(success=True)
 
-            # Handle /start command: treat as a signal to begin setup
-            if text == '/start':
-                text = 'start'
-                # Also clear any stale in-memory conversation to force a fresh one
-                if chat_id in conversations:
-                    app.logger.info("Clearing stale in-memory conversation for chat %s due to /start", chat_id)
-                    conversations.pop(chat_id, None)
+    # 6. Ожидаем и обрабатываем ответ от Copilot
+    time.sleep(1.2)
+    
+    bot_responses, new_watermark = get_copilot_response(conv_id, token, last_watermark, user_from_id)
+    if new_watermark:
+        conversations[chat_id]['watermark'] = new_watermark
 
-            # --- Get or create a conversation with Copilot Studio ---
-            if chat_id not in conversations:
-                app.logger.info("No active conversation for chat %s. Starting a new one.", chat_id)
-                # Check for persisted settings first
+    if not bot_responses:
+        app.logger.info("Нет немедленного ответа от бота для чата %s. Запускаем долгий опрос.", chat_id)
+        if not conversations[chat_id].get('is_polling'):
+            conversations[chat_id]['is_polling'] = True
+            poller_thread = threading.Thread(
+                target=long_poll_for_activity,
+                args=(conv_id, token, user_from_id, new_watermark or last_watermark, chat_id)
+            )
+            poller_thread.daemon = True
+            poller_thread.start()
+    else:
+        app.logger.info("Получено %d немедленных ответов от бота для чата %s.", len(bot_responses), chat_id)
+        for activity in bot_responses:
+            activity_id = activity.get('id')
+            if activity_id in recent_activity_ids[chat_id]:
+                app.logger.warning("Пропуск дубликата ID активности %s для чата %s", activity_id, chat_id)
+                continue
+            
+            recent_activity_ids[chat_id].append(activity_id)
+            bot_text = activity.get('text', '').strip()
+            if not bot_text:
+                continue
+
+            app.logger.info("Обработка сообщения бота для чата %s: '%s'", chat_id, bot_text)
+
+            if parse_and_persist_setup(chat_id, bot_text):
+                app.logger.info("Настройка завершена для чата %s. Отправка канонического подтверждения.", chat_id)
                 settings = db.get_chat_settings(chat_id)
                 if settings and settings.get('language_names'):
-                    app.logger.info("Found existing settings for chat %s, but starting a new DirectLine conversation.", chat_id)
-                    # We still start a new DL conversation, but the bot logic should pick up the settings
-                
-                conv_id, token = start_direct_line_conversation()
-                if conv_id and token:
-                    conversations[chat_id] = {
-                        'id': conv_id,
-                        'token': token,
-                        'watermark': None,
-                        'last_interaction': time.time(),
-                        'is_polling': False
-                    }
-                    app.logger.info("Started new DirectLine conversation for chat %s: %s", chat_id, conv_id)
-                else:
-                    app.logger.error("Failed to start DirectLine conversation for chat %s.", chat_id)
-                    send_telegram_message(chat_id, "Sorry, I couldn't connect to the translation service right now. Please try again later.")
-                    return jsonify(success=False)
-            
-            # --- Send message to Copilot and get response ---
-            conv_id = conversations[chat_id]['id']
-            token = conversations[chat_id]['token']
-            last_watermark = conversations[chat_id]['watermark']
-            conversations[chat_id]['last_interaction'] = time.time()
+                    send_telegram_message(chat_id, f"Спасибо! Настройка завершена. Теперь мы говорим на {settings['language_names']}.\nОтправьте свое сообщение, и я переведу его.")
+                    send_reply_keyboard_remove(chat_id)
+                continue
 
-            # Store last user message for context
-            last_user_message[chat_id] = text
+            if should_skip_forwarding(bot_text):
+                app.logger.info("Пропуск пересылки сообщения бота в чат %s: '%s'", chat_id, bot_text)
+                continue
 
-            # Send user's message to Direct Line
-            activity_id = send_message_to_copilot(conv_id, token, text, from_id=user_from_id)
-            if activity_id:
-                recent_activity_ids[chat_id].append(activity_id)
-            else:
-                # If sending fails, maybe the token expired. Try to refresh.
-                app.logger.warning("Failed to send activity for chat %s. Assuming token expired, starting new conversation.", chat_id)
-                conversations.pop(chat_id, None) # remove stale conversation
-                # Retry the whole process once
-                # This is a simplified retry, a more robust solution might use a decorator or a loop
-                # For now, we just tell the user to try again to keep it simple.
-                send_telegram_message(chat_id, "There was a connection issue. Please send your message again.")
-                return jsonify(success=True)
+            app.logger.info("Пересылка сообщения бота в чат %s: '%s'", chat_id, bot_text)
+            send_telegram_message(chat_id, bot_text)
 
-            # --- Poll for immediate response ---
-            # Give the bot a moment to process before the first poll
-            time.sleep(1.2)
-            
-            bot_responses, new_watermark = get_copilot_response(conv_id, token, last_watermark, user_from_id)
-            if new_watermark:
-                conversations[chat_id]['watermark'] = new_watermark
-
-            # --- Process and forward responses to Telegram ---
-            if not bot_responses:
-                app.logger.info("No immediate bot response for chat %s. Starting long poll.", chat_id)
-                # Start a background poller if no immediate answer
-                if not conversations[chat_id].get('is_polling'):
-                    conversations[chat_id]['is_polling'] = True
-                    poller_thread = threading.Thread(
-                        target=long_poll_for_activity,
-                        args=(conv_id, token, user_from_id, new_watermark or last_watermark, chat_id)
-                    )
-                    poller_thread.daemon = True
-                    poller_thread.start()
-            else:
-                app.logger.info("Got %d immediate bot responses for chat %s.", len(bot_responses), chat_id)
-                for activity in bot_responses:
-                    activity_id = activity.get('id')
-                    if activity_id in recent_activity_ids[chat_id]:
-                        app.logger.warning("Skipping duplicate activity ID %s for chat %s", activity_id, chat_id)
-                        continue
-                    
-                    recent_activity_ids[chat_id].append(activity_id)
-                    
-                    bot_text = activity.get('text', '').strip()
-                    if not bot_text:
-                        continue
-
-                    app.logger.info("Processing bot message for chat %s: '%s'", chat_id, bot_text)
-
-                    # Try to parse setup confirmation and persist it
-                    if parse_and_persist_setup(chat_id, bot_text):
-                        app.logger.info("Setup complete for chat %s. Sending canonical confirmation.", chat_id)
-                        settings = db.get_chat_settings(chat_id)
-                        if settings and settings.get('language_names'):
-                            # Send a clean, canonical confirmation and remove any temporary keyboards
-                            send_telegram_message(chat_id, f"Thanks! Setup is complete. Now we speak {settings['language_names']}.\nSend your message and I'll translate it.")
-                            send_reply_keyboard_remove(chat_id)
-                        continue # Don't forward the original bot message
-
-                    # Skip forwarding certain messages to the user
-                    if should_skip_forwarding(bot_text):
-                        app.logger.info("Skipping forward of bot message to chat %s: '%s'", chat_id, bot_text)
-                        continue
-
-                    # Forward the bot's message to the user
-                    app.logger.info("Forwarding bot message to chat %s: '%s'", chat_id, bot_text)
-                    send_telegram_message(chat_id, bot_text)
-
-        except Exception as e:
-            import traceback
-            tb = traceback.format_exc()
-            app.logger.error("Exception in background worker: %s\n%s", e, tb)
-
-    # Запускаем обработку в фоновом потоке и возвращаем 200 немедленно
-    try:
-        import threading
-        worker = threading.Thread(target=process_update, args=(update,))
-        worker.daemon = True
-        worker.start()
-    except Exception as e:
-        app.logger.error("Failed to start background worker: %s", e)
-
-    # Возвращаем ответ Telegram сразу, чтобы избежать таймаутов и 502/504
-    return jsonify(status="ok")
-
-
+    return jsonify(success=True)
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify(status="ok", message="alive")

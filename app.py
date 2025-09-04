@@ -274,6 +274,13 @@ def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_i
                         except Exception:
                             pass
                         continue
+                    # Avoid forwarding Copilot prompts that are asking the user to provide languages
+                    try:
+                        if is_language_question(text):
+                            app.logger.info("Skipping forwarding Copilot language-question for chat %s: %s", chat_id, text[:140])
+                            continue
+                    except Exception:
+                        pass
                     try:
                         send_telegram_message(chat_id, text)
                     except Exception:
@@ -575,6 +582,12 @@ def telegram_webhook():
                                 # do not forward the original Copilot confirmation text
                                 continue
                             # normal forwarding for non-setup activities
+                            try:
+                                if is_language_question(text):
+                                    app.logger.info("Skipping forwarding Copilot language-question for chat %s: %s", chat_id, text[:140])
+                                    continue
+                            except Exception:
+                                pass
                             send_telegram_message(chat_id, text)
                         new_watermark = nw
                         bot_response = True

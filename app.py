@@ -24,8 +24,7 @@ DIRECT_LINE_SECRET = os.getenv("DIRECT_LINE_SECRET")
 # 3. URL для получения токена Direct Line.
 DIRECT_LINE_ENDPOINT = "https://directline.botframework.com/v3/directline/conversations"
 
-# URL для отправки сообщений в Telegram
-TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendMessage"
+# Note: build Telegram API URL at send time so updated tokens are always used
 # ---------------------------------------------
 # Local debug fallback: when DEBUG_LOCAL=1, messages will be printed to console
 DEBUG_LOCAL = os.getenv('DEBUG_LOCAL', '0') == '1'
@@ -665,7 +664,8 @@ def send_telegram_message(chat_id, text, reply_markup: dict = None):
                 try:
                     remove_payload = {'chat_id': chat_id, 'reply_markup': json.dumps({'remove_keyboard': True})}
                     # best-effort call to remove old reply keyboard
-                    requests.post(TELEGRAM_URL, json=remove_payload, timeout=3)
+                    remove_url = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendMessage"
+                    requests.post(remove_url, json=remove_payload, timeout=3)
                 except Exception:
                     pass
             payload['reply_markup'] = json.dumps(reply_markup, ensure_ascii=False)
@@ -679,17 +679,57 @@ def send_telegram_message(chat_id, text, reply_markup: dict = None):
         app.logger.debug("[LOCAL FALLBACK] chat=%s text=%s", chat_id, text)
         return True
 
+    # Build URL at call time to pick up current TELEGRAM_API_TOKEN
+    bot_send_url = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendMessage"
+    try:
+        response = requests.post(bot_send_url, json=payload, timeout=8)
+    except Exception as e:
+        app.logger.error("Failed to POST to Telegram API for chat=%s: %s", chat_id, e)
+        return False
+
+    # Log result; Telegram returns JSON with ok:true/false and description when failed
+    try:
+        resp_text = response.text
+    except Exception:
+        resp_text = '<unreadable response>'
+
+    if response.status_code == 200:
+        try:
+            j = response.json()
+            if j.get('ok'):
+                app.logger.info("Telegram send succeeded chat=%s", chat_id)
+                return True
+            else:
+                app.logger.warning("Telegram API returned ok=false for chat=%s: %s", chat_id, j)
+                return False
+        except Exception:
+            app.logger.info("Telegram send HTTP 200 but failed to parse JSON for chat=%s: %s", chat_id, resp_text)
+            return False
+    else:
+        app.logger.error("Telegram send failed chat=%s status=%s body=%s", chat_id, response.status_code, resp_text[:1000])
+        return False
+
 
 def send_reply_keyboard_remove(chat_id):
     """Send a ReplyKeyboardRemove to hide any full-screen reply keyboard in Telegram client."""
     rm = {'remove_keyboard': True}
     payload = {'chat_id': chat_id, 'reply_markup': json.dumps(rm)}
     try:
-        response = requests.post(TELEGRAM_URL, json=payload, timeout=5)
+        bot_send_url = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendMessage"
+        response = requests.post(bot_send_url, json=payload, timeout=5)
     except Exception as e:
         app.logger.debug("Failed to send ReplyKeyboardRemove for chat=%s: %s", chat_id, e)
         return False
-    return response.status_code == 200
+    try:
+        j = response.json()
+        ok = j.get('ok', False)
+    except Exception:
+        ok = response.status_code == 200
+    if ok:
+        app.logger.debug("ReplyKeyboardRemove sent for chat=%s", chat_id)
+    else:
+        app.logger.debug("ReplyKeyboardRemove failed for chat=%s status=%s body=%s", chat_id, response.status_code, response.text[:200])
+    return ok
 
 if __name__ == '__main__':
     # Небольшая проверка переменных окружения — полезно ловить ошибки на старте

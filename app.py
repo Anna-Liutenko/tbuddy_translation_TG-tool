@@ -535,33 +535,68 @@ def telegram_webhook():
                 elapsed = 0.0
                 bot_response = None
                 new_watermark = session.get('watermark')
+                # We may receive multiple activities (guidance + confirmation). Process each safely.
+                setup_confirmed_sent = False
                 while elapsed < POLL_TIMEOUT:
                     activities, nw = get_copilot_response(session['conv_id'], session['token'], new_watermark, user_from_id=session.get('from_id', str(chat_id)))
                     if activities:
-                            # This is the core logic for handling bot responses.
-                            # We check if the response is something we should skip,
-                            # then we check if it's a setup confirmation,
-                            # and finally, if neither, we forward it.
+                        try:
+                            for act in activities:
+                                # Normalize activity
+                                act_id = act.get('id')
+                                text = act.get('text') if isinstance(act.get('text'), str) else None
+                                if not act_id or not text:
+                                    continue
 
-                            # 1. Skip redundant questions or instructions from Copilot.
-                            if should_skip_forwarding(text):
-                                continue
+                                # Deduplicate
+                                if act_id in recent_activity_ids[chat_id]:
+                                    continue
+                                recent_activity_ids[chat_id].append(act_id)
 
-                            # 2. Try to parse as a setup confirmation.
-                            if parse_and_persist_setup(chat_id, text):
-                                if not setup_confirmed_sent:
-                                    app.logger.info("Sending canonical 'settings saved' message to chat %s", chat_id)
-                                    send_telegram_message(chat_id, "Language settings saved. You can now send messages for translation.")
-                                    setup_confirmed_sent = True
-                                # Do not forward the original Copilot confirmation text.
-                                continue
-                            
-                            # 3. If it's not a skipped message and not a setup confirmation, forward it.
-                            app.logger.info("Forwarding regular message to chat %s", chat_id)
-                            send_telegram_message(chat_id, text)
+                                # Skip known noisy/setup guidance messages
+                                try:
+                                    if should_skip_forwarding(text):
+                                        app.logger.info("Skipping Copilot guidance/question (pre-parse) for chat %s: %s", chat_id, text[:140])
+                                        continue
+                                except Exception:
+                                    pass
+
+                                # Try to parse and persist setup confirmation
+                                parsed = False
+                                try:
+                                    parsed = parse_and_persist_setup(chat_id, text)
+                                except Exception:
+                                    parsed = False
+
+                                if parsed:
+                                    # Send a single canonical confirmation message
+                                    try:
+                                        if not setup_confirmed_sent:
+                                            try:
+                                                send_reply_keyboard_remove(chat_id)
+                                            except Exception:
+                                                pass
+                                            send_telegram_message(chat_id, "Language settings saved. You can now send messages for translation.")
+                                            setup_confirmed_sent = True
+                                    except Exception:
+                                        pass
+                                    # Do not forward the original Copilot confirmation
+                                    continue
+
+                                # Forward regular bot text to the Telegram user
+                                try:
+                                    app.logger.info("Forwarding regular message to chat %s", chat_id)
+                                    send_telegram_message(chat_id, text)
+                                    bot_response = True
+                                except Exception:
+                                    pass
+                        except Exception as e:
+                            app.logger.error("Error while processing activities for chat %s: %s", chat_id, e, exc_info=True)
+
+                        # Advance watermark to the newest seen
                         new_watermark = nw
-                        bot_response = True
-                        # We continue polling for the full window to catch all activities.
+
+                    # Wait a short interval and continue polling until timeout to catch late activities
                     time.sleep(POLL_INTERVAL)
                     elapsed = time.time() - start_ts
 

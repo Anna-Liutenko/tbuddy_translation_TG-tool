@@ -333,7 +333,7 @@ def start_direct_line_conversation():
         return None, None
 
 def send_message_to_copilot(conversation_id, token, text, from_id="user"):
-    """Отправляет сообщение пользователя в Copilot Studio."""
+    """Отправляет сообщение пользователя в Copilot Studio и возвращает ID активности."""
     url = f"https://directline.botframework.com/v3/directline/conversations/{conversation_id}/activities"
     headers = {
         'Authorization': f'Bearer {token}',
@@ -341,21 +341,30 @@ def send_message_to_copilot(conversation_id, token, text, from_id="user"):
     }
     payload = {
         "type": "message",
-    # Use a per-telegram-user from.id so BotFramework can distinguish users
-    "from": {"id": str(from_id)},
+        "from": {"id": str(from_id)},
         "text": text
     }
-    response = requests.post(url, headers=headers, json=payload, timeout=10)
-    # Direct Line may return 200 or 201 on activity post
-    app.logger.info("DirectLine send activity status=%s convo=%s", response.status_code, conversation_id)
-    if response.status_code in (200, 201):
-        try:
-            j = response.json()
-            app.logger.debug("DL send keys=%s", list(j.keys()) if isinstance(j, dict) else None)
-        except Exception:
-            app.logger.debug("DL send: no json body")
-    else:
-        app.logger.warning("Ошибка отправки сообщения: %s %s", response.status_code, (response.text or '')[:200])
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        app.logger.info("DirectLine send activity status=%s convo=%s", response.status_code, conversation_id)
+        if response.status_code in (200, 201):
+            try:
+                j = response.json()
+                activity_id = j.get('id')
+                if not activity_id:
+                    app.logger.warning("DL send response did not contain an activity ID.")
+                    return None
+                app.logger.debug("DL send successful, activity_id=%s", activity_id)
+                return activity_id
+            except (json.JSONDecodeError, AttributeError) as e:
+                app.logger.error("DL send failed to parse JSON response: %s", e)
+                return None
+        else:
+            app.logger.warning("Ошибка отправки сообщения: %s %s", response.status_code, (response.text or '')[:200])
+            return None
+    except requests.exceptions.RequestException as e:
+        app.logger.error("Failed to send message to DirectLine: %s", e)
+        return None
 
 def get_copilot_response(conversation_id, token, last_watermark, user_from_id="user"):
     """Return list of bot activities (dicts) not from user and updated watermark."""

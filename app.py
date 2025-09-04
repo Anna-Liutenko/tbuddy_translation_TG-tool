@@ -237,17 +237,31 @@ def should_skip_forwarding(text):
         lw = text.lower()
         # If it looks like an explicit language question, skip
         if is_language_question(text):
+            app.logger.debug("should_skip_forwarding: matched is_language_question for text=%s", text[:140])
             return True
-        # Common patterns that are safe to suppress
-        if re.search(r'write\s*\d', lw):
+
+        # Regex-based patterns: 'write 2', 'write 3', '2 or 3', 'which languages', 'what languages'
+        if re.search(r'write\s*\d', lw) or '2 or 3' in lw or re.search(r'\bwhat\b.*\blanguage', lw) or re.search(r'\bwhich\b.*\blanguage', lw) or re.search(r'\bwhich\b.*\blanguages', lw):
+            app.logger.debug("should_skip_forwarding: matched write/what/which pattern for text=%s", text[:140])
             return True
-        if '2 or 3' in lw or '2 or 3 languages' in lw:
+
+        # 'specify language' or short instruction forms
+        if re.search(r'specif(y|y)\b.*language', lw) or ('specify' in lw and 'language' in lw):
+            app.logger.debug("should_skip_forwarding: matched specify-language pattern for text=%s", text[:140])
             return True
-        if 'specify' in lw and 'language' in lw:
+
+        # Short guidance lines are usually noise; suppress them if they are short and contain known phrases
+        short_guidance_phrases = ['send your message', "i'll translate", "send your message and", 'please send', 'please specify', 'please enter']
+        if len(lw.split()) <= 14 and any(p in lw for p in short_guidance_phrases):
+            app.logger.debug("should_skip_forwarding: matched short guidance phrase for text=%s", text[:140])
             return True
-        # short prompts like 'Send your message and I'll translate it.' are also noise when forwarded
-        if len(lw.split()) <= 10 and any(k in lw for k in ['send your message', "i'll translate", "send your message and"]):
+
+        # Russian / other language variants for 'specify' / 'choose' / 'select' to avoid forwarding Copilot prompts in localized models
+        other_triggers = ['укажите', 'укажи', 'укажите язык', 'выберите', 'укажите 2', 'введите 2']
+        if any(t in lw for t in other_triggers):
+            app.logger.debug("should_skip_forwarding: matched non-english trigger for text=%s", text[:140])
             return True
+
         return False
     except Exception:
         return False

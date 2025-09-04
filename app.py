@@ -654,6 +654,15 @@ def send_telegram_message(chat_id, text, reply_markup: dict = None):
     }
     if reply_markup is not None:
         try:
+            # If caller provided an inline keyboard, first send a ReplyKeyboardRemove
+            # to ensure any previously shown full-screen reply keyboard is hidden.
+            if isinstance(reply_markup, dict) and 'inline_keyboard' in reply_markup:
+                try:
+                    remove_payload = {'chat_id': chat_id, 'reply_markup': json.dumps({'remove_keyboard': True})}
+                    # best-effort call to remove old reply keyboard
+                    requests.post(TELEGRAM_URL, json=remove_payload, timeout=3)
+                except Exception:
+                    pass
             payload['reply_markup'] = json.dumps(reply_markup, ensure_ascii=False)
         except Exception:
             # fallback: ignore invalid reply_markup

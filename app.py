@@ -94,125 +94,49 @@ def parse_and_persist_setup(chat_id, text):
         if not isinstance(text, str):
             return False
 
-        # Guard: if text looks like a translation block (e.g. "ru: Доброе утро!\nja: ...")
-        # avoid parsing these as language names. Common signs: multiple lines and
-        # lines starting with short language codes followed by ':' or multiple ':' occurrences.
-        try:
-            if '\n' in text or text.count(':') >= 1:
-                lines = [l.strip() for l in text.splitlines() if l.strip()]
-                short_code_line = False
-                for ln in lines:
-                    # matches patterns like 'ru: ...' or 'en: Hello' or 'ja: おはよう'
-                    if re.match(r'^[A-Za-z]{2,3}\s*:', ln):
-                        short_code_line = True
-                        break
-                if short_code_line and len(lines) >= 1:
-                    app.logger.info("Skipping parse: looks like translation block for chat %s: %s", chat_id, text[:120])
-                    return False
-        except Exception:
-            # if detection fails, continue to normal parsing
-            pass
-
-        lowered = text.lower()
-        # Ignore clear negative/fallback messages that indicate parsing failed
-        negative_markers = [
-            'no languages', 'no language', 'no languages are', 'no languages mentioned',
-            'no languages are mentioned', 'nothing', 'none'
-        ]
-        for nm in negative_markers:
-            if nm in lowered:
-                app.logger.info("Ignoring negative setup text for chat %s: %s", chat_id, text)
+        # Guard against parsing translation blocks
+        if '\n' in text or text.count(':') >= 2:
+            if re.search(r'^[a-z]{2,3}:', text, re.MULTILINE):
+                app.logger.info("Skipping parse for chat %s: looks like a translation block.", chat_id)
                 return False
 
-        def extract_language_names_from_text(t):
-            """Try to extract a list of language names from a free text string.
+        lowered = text.lower()
+        # Ignore messages that clearly indicate failure or are not setup-related.
+        negative_markers = [
+            'no languages mentioned', 'no languages are mentioned', 'no language was specified',
+            'i can only translate', 'sorry', 'unfortunately', 'error'
+        ]
+        if any(marker in lowered for marker in negative_markers):
+            app.logger.info("Ignoring negative/non-setup text for chat %s: %s", chat_id, text[:120])
+            return False
 
-            Returns a list of cleaned names (may be empty).
-            """
-            if not t or not isinstance(t, str):
-                return []
-            s = t.strip()
-            # Remove leading instruction phrases that may precede a comma-separated list,
-            # e.g. "Write 2 languages: English, Russian" or "Укажите 2 языка: русский, английский"
-            try:
-                s = re.sub(r'^(write\s*\d*\s*languages?:\s*)', '', s, flags=re.IGNORECASE)
-                s = re.sub(r'^(write\s*languages?:\s*)', '', s, flags=re.IGNORECASE)
-                s = re.sub(r'^(please\s*(write|specify)\s*\d*\s*languages?:\s*)', '', s, flags=re.IGNORECASE)
-                s = re.sub(r'^(укажите\s*\d*\s*язык[а]?:\s*)', '', s, flags=re.IGNORECASE)
-                s = re.sub(r'^(укажи\s*\d*\s*язык[а]?:\s*)', '', s, flags=re.IGNORECASE)
-                s = re.sub(r'^(пожалуйста[,\s]*укажите\s*\d*\s*язык[а]?:\s*)', '', s, flags=re.IGNORECASE)
-            except Exception:
-                pass
-            # Remove common trailing sentences
-            for sep in ['Send your message and', 'Send your message', '\n']:
-                if sep in s:
-                    s = s.split(sep, 1)[0]
-            s = s.strip().strip('.,;: ')
-            if not s:
-                return []
+        # More robust language extraction
+        s = text
+        # Remove instructional prefixes
+        s = re.sub(r'^(write|specify|enter|please write|please specify)\s*\d*\s*languages?:\s*', '', s, flags=re.IGNORECASE).strip()
+        # Remove confirmation prefixes
+        s = re.sub(r'^(setup is complete\.|thanks!|great!)\s*', '', s, flags=re.IGNORECASE).strip()
+        s = re.sub(r'^now we speak\s*', '', s, flags=re.IGNORECASE).strip()
+        # Remove instructional suffixes
+        s = re.sub(r'\.\s*send your message.*$', '', s, flags=re.IGNORECASE).strip()
 
-            # Prefer comma or 'and' separated lists
-            if ',' in s or '\band\b' in s:
-                parts = re.split(r',|\band\b', s)
-            else:
-                # fallback: split by slash or semicolon
-                if '/' in s:
-                    parts = s.split('/')
-                elif ';' in s:
-                    parts = s.split(';')
-                else:
-                    # last resort: split by spaces but only accept if looks like a short list
-                    tokens = s.split()
-                    # if there are multiple tokens and not a long sentence, treat each token as a language
-                    if 1 < len(tokens) <= 6:
-                        parts = tokens
-                    else:
-                        return []
+        if not s:
+            return False
 
-            cleaned = [p.strip().strip('.,;: ') for p in parts if p and p.strip()]
-            valid = []
-            for n in cleaned:
-                ln = n.lower()
-                if any(x in ln for x in ['no ', 'none', 'nothing', 'not']):
-                    continue
-                # require at least one alphabetic character (Latin or Cyrillic)
-                if re.search(r'[A-Za-zА-Яа-я]', n):
-                    valid.append(n)
-            return valid
+        # Split by common delimiters
+        parts = re.split(r'[,;]| and | or ', s)
+        names = [p.strip().strip('.,:; ') for p in parts if p and p.strip() and len(p.strip()) > 1]
 
-        # 1) Try to parse the canonical confirmation text: look for markers
-        after = None
-        if 'now we speak' in lowered:
-            # case-insensitive split
-            parts = re.split(r'now we speak', text, flags=re.IGNORECASE)
-            after = parts[1] if len(parts) > 1 else None
-        elif 'setup is complete' in lowered:
-            parts = re.split(r'setup is complete', text, flags=re.IGNORECASE)
-            after = parts[1] if len(parts) > 1 else None
-
-        names = []
-        if after:
-            names = extract_language_names_from_text(after)
-
-        # 2) If no names found in canonical confirmation, try to extract directly from the provided text
-        if not names:
-            names = extract_language_names_from_text(text)
-
-        # Require at least two languages to avoid false positives (copilot prompt asks 2-3 languages)
-        if not names or len(names) < 2:
-            app.logger.info("No valid language names parsed from text for chat %s: %s", chat_id, text)
+        if len(names) < 2:
+            app.logger.info("Did not find at least 2 valid language names in text for chat %s: %s", chat_id, text[:120])
             return False
 
         lang_names = ', '.join(names)
-        app.logger.info("Persisting parsed language names for chat %s: %s", chat_id, lang_names)
-        # store language_codes as empty string for now to preserve original schema
-        try:
-            db.upsert_chat_settings(chat_id, '', lang_names, datetime.utcnow().isoformat())
-        except Exception as _e:
-            app.logger.error("Failed to persist chat settings for %s: %s", chat_id, _e)
+        app.logger.info("SUCCESS: Parsed and persisting language names for chat %s: [%s]", chat_id, lang_names)
+        db.upsert_chat_settings(chat_id, '', lang_names, datetime.utcnow().isoformat())
         return True
     except Exception as e:
-        app.logger.error("Error parsing/persisting setup for chat %s: %s", chat_id, e)
+        app.logger.error("Error in parse_and_persist_setup for chat %s: %s", chat_id, e, exc_info=True)
         return False
 
 
@@ -239,42 +163,40 @@ def is_language_question(text):
 def should_skip_forwarding(text):
     """Return True if the given Copilot text should NOT be forwarded to the Telegram user.
 
-    This includes language-setup questions and short instructions like "Write 2 or 3 languages",
-    or other small guidance lines that confuse users when forwarded.
+    This is a crucial function to prevent the bot from asking redundant questions
+    or sending confusing, intermediate messages from the Copilot backend.
     """
     try:
         if not text or not isinstance(text, str):
             return False
+        
         lw = text.lower()
-        # If it looks like an explicit language question, skip
+
+        # Condition 1: Skip explicit questions about languages.
+        # This is the most important rule to prevent the "double question" loop.
         if is_language_question(text):
-            app.logger.debug("should_skip_forwarding: matched is_language_question for text=%s", text[:140])
+            app.logger.info("SKIP: Text is a language question: '%s'", text)
             return True
 
-        # Regex-based patterns: 'write 2', 'write 3', '2 or 3', 'which languages', 'what languages'
-        if re.search(r'write\s*\d', lw) or '2 or 3' in lw or re.search(r'\bwhat\b.*\blanguage', lw) or re.search(r'\bwhich\b.*\blanguage', lw) or re.search(r'\bwhich\b.*\blanguages', lw):
-            app.logger.debug("should_skip_forwarding: matched write/what/which pattern for text=%s", text[:140])
+        # Condition 2: Skip short, instructional phrases that are part of the setup flow.
+        # These are often redundant or confusing when the user has already provided input.
+        instructional_phrases = [
+            'write 2 or 3 languages', 'write 2 languages', 'specify the languages',
+            'please provide the languages', 'send your message and i\'ll translate it'
+        ]
+        if any(phrase in lw for phrase in instructional_phrases):
+            app.logger.info("SKIP: Text contains a setup instruction: '%s'", text)
+            return True
+            
+        # Condition 3: Skip the specific, confusing confirmation message that was causing issues.
+        if 'setup is complete' in lw and 'now we speak' in lw:
+            app.logger.info("SKIP: Text is the confusing 'setup is complete' message: '%s'", text)
             return True
 
-        # 'specify language' or short instruction forms
-        if re.search(r'specif(y|y)\b.*language', lw) or ('specify' in lw and 'language' in lw):
-            app.logger.debug("should_skip_forwarding: matched specify-language pattern for text=%s", text[:140])
-            return True
-
-        # Short guidance lines are usually noise; suppress them if they are short and contain known phrases
-        short_guidance_phrases = ['send your message', "i'll translate", "send your message and", 'please send', 'please specify', 'please enter']
-        if len(lw.split()) <= 14 and any(p in lw for p in short_guidance_phrases):
-            app.logger.debug("should_skip_forwarding: matched short guidance phrase for text=%s", text[:140])
-            return True
-
-        # Russian / other language variants for 'specify' / 'choose' / 'select' to avoid forwarding Copilot prompts in localized models
-        other_triggers = ['укажите', 'укажи', 'укажите язык', 'выберите', 'укажите 2', 'введите 2']
-        if any(t in lw for t in other_triggers):
-            app.logger.debug("should_skip_forwarding: matched non-english trigger for text=%s", text[:140])
-            return True
-
+        app.logger.debug("FORWARD: Text does not meet skip conditions: '%s'", text)
         return False
-    except Exception:
+    except Exception as e:
+        app.logger.error("Error in should_skip_forwarding: %s", e, exc_info=True)
         return False
 
 db.init_db()
@@ -556,16 +478,17 @@ def telegram_webhook():
                 # Handle the /reset command (accept '/reset' and '/reset@botname')
                 if re.match(r'^/reset(\@\S+)?\s*$', user_message.strip(), flags=re.IGNORECASE):
                     try:
+                        app.logger.info(f"COMMAND /reset received for chat_id: {chat_id}. Deleting settings.")
                         # Delete from DB
                         db.delete_chat_settings(chat_id)
-                        # Delete in-memory conversation state
+                        # Delete in-memory conversation state to force a new Direct Line session
                         if chat_id in conversations:
                             del conversations[chat_id]
-                        app.logger.info(f"Reset chat settings and conversation for chat_id: {chat_id}")
-                        # Send the same response as /start: prompt for languages and keep flow identical
-                        send_telegram_message(chat_id, "Language settings have been reset. Please specify 2 or 3 languages to begin.")
+                        app.logger.info(f"SUCCESS: Reset chat settings and conversation for chat_id: {chat_id}")
+                        # Send a clean, direct prompt for languages.
+                        send_telegram_message(chat_id, "Language settings have been reset. Please specify 2 or 3 languages to begin (e.g., English, Russian, Polish).")
                     except Exception as e:
-                        app.logger.error(f"Error during reset for chat_id {chat_id}: {e}")
+                        app.logger.error(f"Error during /reset for chat_id {chat_id}: {e}", exc_info=True)
                         send_telegram_message(chat_id, "Sorry, there was an error trying to reset the settings.")
                     return # Stop processing this message further
 
@@ -615,55 +538,30 @@ def telegram_webhook():
                 while elapsed < POLL_TIMEOUT:
                     activities, nw = get_copilot_response(session['conv_id'], session['token'], new_watermark, user_from_id=session.get('from_id', str(chat_id)))
                     if activities:
-                        # If Copilot returns several activities, avoid forwarding raw setup/confirmation
-                        # messages that may be localized or duplicated. Instead, parse and persist
-                        # setup confirmations and send one canonical confirmation message.
-                        setup_confirmed_sent = False
-                        for act in activities:
-                            act_id = act.get('id')
-                            text = act.get('text')
-                            if not act_id or not text:
-                                continue
-                            if act_id in recent_activity_ids[chat_id]:
-                                continue
-                            recent_activity_ids[chat_id].append(act_id)
-                            # Try parsing/persisting setup confirmation; if parsing succeeds,
-                            # send a single canonical confirmation and skip forwarding the raw text.
-                            # Skip forwarding short guidance/questions before attempting parse
-                            try:
-                                if should_skip_forwarding(text):
-                                    app.logger.info("Skipping Copilot guidance/question (pre-parse) for chat %s: %s", chat_id, text[:140])
-                                    continue
-                            except Exception:
-                                pass
+                            # This is the core logic for handling bot responses.
+                            # We check if the response is something we should skip,
+                            # then we check if it's a setup confirmation,
+                            # and finally, if neither, we forward it.
 
-                            parsed = False
-                            try:
-                                parsed = parse_and_persist_setup(chat_id, text)
-                            except Exception:
-                                parsed = False
-                            if parsed:
-                                try:
-                                    if not setup_confirmed_sent:
-                                        send_telegram_message(chat_id, "Language settings saved. You can now send messages for translation.")
-                                        setup_confirmed_sent = True
-                                except Exception:
-                                    pass
-                                # do not forward the original Copilot confirmation text
+                            # 1. Skip redundant questions or instructions from Copilot.
+                            if should_skip_forwarding(text):
                                 continue
-                            # normal forwarding for non-setup activities
-                            try:
-                                if should_skip_forwarding(text):
-                                    app.logger.info("Skipping forwarding Copilot language-question/notice for chat %s: %s", chat_id, text[:140])
-                                    continue
-                            except Exception:
-                                pass
+
+                            # 2. Try to parse as a setup confirmation.
+                            if parse_and_persist_setup(chat_id, text):
+                                if not setup_confirmed_sent:
+                                    app.logger.info("Sending canonical 'settings saved' message to chat %s", chat_id)
+                                    send_telegram_message(chat_id, "Language settings saved. You can now send messages for translation.")
+                                    setup_confirmed_sent = True
+                                # Do not forward the original Copilot confirmation text.
+                                continue
+                            
+                            # 3. If it's not a skipped message and not a setup confirmation, forward it.
+                            app.logger.info("Forwarding regular message to chat %s", chat_id)
                             send_telegram_message(chat_id, text)
                         new_watermark = nw
                         bot_response = True
-                        # Do not break here; continue polling for the full POLL_TIMEOUT
-                        # to catch all activities in the window. The long-poller is a fallback.
-                        # break
+                        # We continue polling for the full window to catch all activities.
                     time.sleep(POLL_INTERVAL)
                     elapsed = time.time() - start_ts
 

@@ -107,5 +107,7 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     log = logging.getLogger('db')
     init_db()
+    # Example of deleting a chat setting (use with caution)
+    # delete_chat_settings('some_chat_id') 
     for r in dump_all():
         log.info("row=%s", r)

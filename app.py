@@ -224,6 +224,34 @@ def is_language_question(text):
     except Exception:
         return False
 
+
+def should_skip_forwarding(text):
+    """Return True if the given Copilot text should NOT be forwarded to the Telegram user.
+
+    This includes language-setup questions and short instructions like "Write 2 or 3 languages",
+    or other small guidance lines that confuse users when forwarded.
+    """
+    try:
+        if not text or not isinstance(text, str):
+            return False
+        lw = text.lower()
+        # If it looks like an explicit language question, skip
+        if is_language_question(text):
+            return True
+        # Common patterns that are safe to suppress
+        if re.search(r'write\s*\d', lw):
+            return True
+        if '2 or 3' in lw or '2 or 3 languages' in lw:
+            return True
+        if 'specify' in lw and 'language' in lw:
+            return True
+        # short prompts like 'Send your message and I'll translate it.' are also noise when forwarded
+        if len(lw.split()) <= 10 and any(k in lw for k in ['send your message', "i'll translate", "send your message and"]):
+            return True
+        return False
+    except Exception:
+        return False
+
 db.init_db()
 
 def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_id, total_timeout=120.0, interval=1.0):
@@ -276,8 +304,8 @@ def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_i
                         continue
                     # Avoid forwarding Copilot prompts that are asking the user to provide languages
                     try:
-                        if is_language_question(text):
-                            app.logger.info("Skipping forwarding Copilot language-question for chat %s: %s", chat_id, text[:140])
+                        if should_skip_forwarding(text):
+                            app.logger.info("Skipping forwarding Copilot language-question/notice for chat %s: %s", chat_id, text[:140])
                             continue
                     except Exception:
                         pass
@@ -583,8 +611,8 @@ def telegram_webhook():
                                 continue
                             # normal forwarding for non-setup activities
                             try:
-                                if is_language_question(text):
-                                    app.logger.info("Skipping forwarding Copilot language-question for chat %s: %s", chat_id, text[:140])
+                                if should_skip_forwarding(text):
+                                    app.logger.info("Skipping forwarding Copilot language-question/notice for chat %s: %s", chat_id, text[:140])
                                     continue
                             except Exception:
                                 pass

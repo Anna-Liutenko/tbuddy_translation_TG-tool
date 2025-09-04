@@ -132,6 +132,17 @@ def parse_and_persist_setup(chat_id, text):
             if not t or not isinstance(t, str):
                 return []
             s = t.strip()
+            # Remove leading instruction phrases that may precede a comma-separated list,
+            # e.g. "Write 2 languages: English, Russian" or "Укажите 2 языка: русский, английский"
+            try:
+                s = re.sub(r'^(write\s*\d*\s*languages?:\s*)', '', s, flags=re.IGNORECASE)
+                s = re.sub(r'^(write\s*languages?:\s*)', '', s, flags=re.IGNORECASE)
+                s = re.sub(r'^(please\s*(write|specify)\s*\d*\s*languages?:\s*)', '', s, flags=re.IGNORECASE)
+                s = re.sub(r'^(укажите\s*\d*\s*язык[а]?:\s*)', '', s, flags=re.IGNORECASE)
+                s = re.sub(r'^(укажи\s*\d*\s*язык[а]?:\s*)', '', s, flags=re.IGNORECASE)
+                s = re.sub(r'^(пожалуйста[,\s]*укажите\s*\d*\s*язык[а]?:\s*)', '', s, flags=re.IGNORECASE)
+            except Exception:
+                pass
             # Remove common trailing sentences
             for sep in ['Send your message and', 'Send your message', '\n']:
                 if sep in s:

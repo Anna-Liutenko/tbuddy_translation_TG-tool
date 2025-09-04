@@ -661,7 +661,9 @@ def telegram_webhook():
                             send_telegram_message(chat_id, text)
                         new_watermark = nw
                         bot_response = True
-                        break
+                        # Do not break here; continue polling for the full POLL_TIMEOUT
+                        # to catch all activities in the window. The long-poller is a fallback.
+                        # break
                     time.sleep(POLL_INTERVAL)
                     elapsed = time.time() - start_ts
 

@@ -73,6 +73,8 @@ app.logger.setLevel(LOG_LEVEL)
 # В реальном приложении лучше использовать базу данных (например, Redis или SQLite).
 # Ключ: ID чата в Telegram, Значение: ID диалога в Copilot Studio и токен.
 conversations = {}
+# Global dictionary to track active long polling tasks
+active_pollers = {}
 # store last user message per chat as a simple fallback
 last_user_message = {}
 
@@ -148,9 +150,17 @@ def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_i
     """
     import time
     try:
+        # Mark this poller as active
+        active_pollers[chat_id] = True
+        
         t0 = time.time()
         nw = start_watermark
         while time.time() - t0 < total_timeout:
+            # Check if we should stop polling
+            if not active_pollers.get(chat_id, False):
+                app.logger.info("Long poller stopping for chat=%s (cancelled)", chat_id)
+                break
+                
             activities, new_nw = get_copilot_response(conv_id, token, nw, user_from_id=user_from_id)
             if activities:
                 # update watermark
@@ -183,7 +193,8 @@ def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_i
     except Exception as e:
         app.logger.error("Long poller exception for chat=%s: %s", chat_id, e)
     finally:
-        # clear polling flag
+        # clear polling flags
+        active_pollers.pop(chat_id, None)
         try:
             if chat_id in conversations:
                 conversations[chat_id]['polling'] = False
@@ -366,6 +377,10 @@ def telegram_webhook():
     # 2. Обработка команды /reset
     if text == '/reset':
         app.logger.info("Processing /reset for chat %s. Clearing all state.", chat_id)
+        
+        # Stop any active long polling for this chat
+        active_pollers[chat_id] = False
+        
         try:
             db.delete_chat_settings(chat_id)
             app.logger.info("Deleted DB settings for chat %s", chat_id)
@@ -387,11 +402,16 @@ def telegram_webhook():
         text = 'start' # Убедимся, что текст именно 'start'
         if chat_id in conversations:
             app.logger.info("Clearing stale in-memory conversation for chat %s due to /start", chat_id)
+            # Stop any active long polling for this chat
+            active_pollers[chat_id] = False
             conversations.pop(chat_id, None)
 
     # 4. Получаем или создаем диалог с Copilot Studio
     if chat_id not in conversations:
         app.logger.info("No active conversation for chat %s. Starting a new one.", chat_id)
+        
+        # Stop any leftover long polling for this chat
+        active_pollers[chat_id] = False
         
         conv_id, token = start_direct_line_conversation()
         if conv_id and token:

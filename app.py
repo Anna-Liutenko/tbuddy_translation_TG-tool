@@ -1,15 +1,17 @@
 import os
+import sys
+import time
+import json
+import logging
+import re
 import requests
+import threading
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 import db
 from collections import deque, defaultdict
 from datetime import datetime
-import re
-import json
-import logging
 from logging.handlers import RotatingFileHandler
-import sys
 
 # Загружаем переменные из файла .env
 load_dotenv()
@@ -83,6 +85,7 @@ DB_PATH = os.path.join(os.path.dirname(__file__), 'chat_settings.db')
 # DB abstraction: use db.py for all ChatSettings access
 # NOTE: db.py currently uses SQLite and will raise NotImplementedError
 # if DATABASE_URL is set. This centralizes DB access for easier future migration.
+import db
 
 
 def parse_and_persist_setup(chat_id, text):
@@ -440,199 +443,157 @@ def telegram_webhook():
                 app.logger.warning("Empty update_obj in background worker")
                 return
 
-            # Handle inline button callbacks (callback_query) such as the compact 'Меню' button
-            if 'callback_query' in update_obj:
-                cq = update_obj['callback_query']
-                data = cq.get('data')
-                cq_id = cq.get('id')
-                # Determine chat id: prefer the message.chat.id if present, else fall back to from.id
-                chat_id = None
-                try:
-                    if cq.get('message') and cq['message'].get('chat'):
-                        chat_id = cq['message']['chat']['id']
-                except Exception:
-                    chat_id = None
-                if not chat_id:
-                    chat_id = cq.get('from', {}).get('id')
+            data = update_obj
 
-                # Acknowledge the callback quickly so the client stops showing the loading state
-                try:
-                    answer_url = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/answerCallbackQuery"
-                    requests.post(answer_url, json={'callback_query_id': cq_id, 'text': 'Opening menu...', 'show_alert': False}, timeout=3)
-                except Exception:
-                    pass
-
-                if data == 'menu' and chat_id:
+            # Handle callback queries from inline buttons (e.g., menu)
+            if 'callback_query' in data:
+                callback_data = data['callback_query']['data']
+                chat_id = data['callback_query']['message']['chat']['id']
+                user_from_id = data['callback_query']['from']['id']
+                app.logger.info("Received callback_query from chat_id %s: %s", chat_id, callback_data)
+                # Treat 'menu' callback as a /reset command to restart the language setup
+                if callback_data == 'menu':
+                    text = '/reset'
+                else:
+                    # In the future, other callbacks can be handled here.
+                    # For now, just acknowledge to stop the loading indicator on the button.
                     try:
-                        help_text = (
-                            "Меню:\n"
-                            "/reset — Сбросить настройки языка\n"
-                            "Отправьте 2 или 3 языка (например: русский, английский) чтобы начать перевод."
-                        )
-                        send_telegram_message(chat_id, help_text)
-                    except Exception:
-                        pass
-                return
-
-            if "message" in update_obj and "text" in update_obj["message"]:
-                chat_id = update_obj["message"]["chat"]["id"]
-                user_message = update_obj["message"]["text"]
-
-                # Handle the /reset command (accept '/reset' and '/reset@botname')
-                if re.match(r'^/reset(\@\S+)?\s*$', user_message.strip(), flags=re.IGNORECASE):
-                    try:
-                        app.logger.info(f"COMMAND /reset received for chat_id: {chat_id}. Deleting settings.")
-                        # Delete from DB
-                        db.delete_chat_settings(chat_id)
-                        # Delete in-memory conversation state to force a new Direct Line session
-                        if chat_id in conversations:
-                            del conversations[chat_id]
-                        app.logger.info(f"SUCCESS: Reset chat settings and conversation for chat_id: {chat_id}")
-                        # Send a clean, direct prompt for languages.
-                        send_telegram_message(chat_id, "Language settings have been reset. Please specify 2 or 3 languages to begin (e.g., English, Russian, Polish).")
+                        cb_query_id = data['callback_query']['id']
+                        cb_ack_url = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/answerCallbackQuery"
+                        requests.post(cb_ack_url, json={'callback_query_id': cb_query_id}, timeout=5)
                     except Exception as e:
-                        app.logger.error(f"Error during /reset for chat_id {chat_id}: {e}", exc_info=True)
-                        send_telegram_message(chat_id, "Sorry, there was an error trying to reset the settings.")
-                    return # Stop processing this message further
+                        app.logger.warning("Could not acknowledge callback query: %s", e)
+                    return jsonify(success=True) # We've handled it, no further processing needed.
 
-                # persist last user message for fallback parsing later
+            # Handle /reset command: clear all state and restart
+            if text == '/reset':
+                app.logger.info("Processing /reset for chat %s. Clearing all state.", chat_id)
                 try:
-                    last_user_message[chat_id] = user_message
-                except Exception:
-                    pass
-                app.logger.info(f"[worker] Received message from {chat_id}: {user_message}")
+                    db.delete_chat_settings(chat_id)
+                    app.logger.info("Deleted DB settings for chat %s", chat_id)
+                except Exception as e:
+                    app.logger.error("Error deleting DB settings for chat %s: %s", chat_id, e, exc_info=True)
+                
+                # Clear all in-memory state for the chat
+                conversations.pop(chat_id, None)
+                last_user_message.pop(chat_id, None)
+                if chat_id in recent_activity_ids:
+                    del recent_activity_ids[chat_id]
+                app.logger.info("Cleared in-memory state for chat %s", chat_id)
+                
+                # Treat as a /start to trigger the setup flow
+                text = 'start'
 
-                # Проверяем, есть ли уже активный диалог для этого чата
-                if chat_id not in conversations:
-                    token, conv_id = start_direct_line_conversation()
-                    # Require both a usable auth token and a conversation id. If either is missing,
-                    # do not create a conversations entry to avoid downstream errors when sending
-                    # or polling activities.
-                    if not token or not conv_id:
-                        app.logger.error("Could not start Direct Line conversation for chat %s - token=%s conv_id=%s", chat_id, bool(token), bool(conv_id))
-                        return
-                    # create a per-chat from_id so DL user activities are tied to this Telegram chat
-                    from_id = f"telegram_{chat_id}"
-                    conversations[chat_id] = {"conv_id": conv_id, "token": token, "watermark": None, "from_id": from_id}
+            # Handle /start command: treat as a signal to begin setup
+            if text == '/start':
+                text = 'start'
+                # Also clear any stale in-memory conversation to force a fresh one
+                if chat_id in conversations:
+                    app.logger.info("Clearing stale in-memory conversation for chat %s due to /start", chat_id)
+                    conversations.pop(chat_id, None)
 
-                session = conversations[chat_id]
+            # --- Get or create a conversation with Copilot Studio ---
+            if chat_id not in conversations:
+                app.logger.info("No active conversation for chat %s. Starting a new one.", chat_id)
+                # Check for persisted settings first
+                settings = db.get_chat_settings(chat_id)
+                if settings and settings.get('language_names'):
+                    app.logger.info("Found existing settings for chat %s, but starting a new DirectLine conversation.", chat_id)
+                    # We still start a new DL conversation, but the bot logic should pick up the settings
+                
+                conv_id, token = start_direct_line_conversation()
+                if conv_id and token:
+                    conversations[chat_id] = {
+                        'id': conv_id,
+                        'token': token,
+                        'watermark': None,
+                        'last_interaction': time.time(),
+                        'is_polling': False
+                    }
+                    app.logger.info("Started new DirectLine conversation for chat %s: %s", chat_id, conv_id)
+                else:
+                    app.logger.error("Failed to start DirectLine conversation for chat %s.", chat_id)
+                    send_telegram_message(chat_id, "Sorry, I couldn't connect to the translation service right now. Please try again later.")
+                    return jsonify(success=False)
+            
+            # --- Send message to Copilot and get response ---
+            conv_id = conversations[chat_id]['id']
+            token = conversations[chat_id]['token']
+            last_watermark = conversations[chat_id]['watermark']
+            conversations[chat_id]['last_interaction'] = time.time()
 
-                # 1. Отправляем сообщение пользователя в Copilot
-                import time
-                start_ts = time.time()
+            # Store last user message for context
+            last_user_message[chat_id] = text
 
-                # 1. Отправляем сообщение пользователя в Copilot
-                send_message_to_copilot(session['conv_id'], session['token'], user_message, from_id=session.get('from_id', str(chat_id)))
+            # Send user's message to Direct Line
+            activity_id = send_message_to_copilot(conv_id, token, text, from_id=user_from_id)
+            if activity_id:
+                recent_activity_ids[chat_id].append(activity_id)
+            else:
+                # If sending fails, maybe the token expired. Try to refresh.
+                app.logger.warning("Failed to send activity for chat %s. Assuming token expired, starting new conversation.", chat_id)
+                conversations.pop(chat_id, None) # remove stale conversation
+                # Retry the whole process once
+                # This is a simplified retry, a more robust solution might use a decorator or a loop
+                # For now, we just tell the user to try again to keep it simple.
+                send_telegram_message(chat_id, "There was a connection issue. Please send your message again.")
+                return jsonify(success=True)
 
-                # 2. Let the user know we're processing (typing...) — non-blocking
-                try:
-                    typing_url = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendChatAction"
-                    requests.post(typing_url, data={'chat_id': chat_id, 'action': 'typing'}, timeout=2)
-                except Exception:
-                    pass
+            # --- Poll for immediate response ---
+            # Give the bot a moment to process before the first poll
+            time.sleep(1.2)
+            
+            bot_responses, new_watermark = get_copilot_response(conv_id, token, last_watermark, user_from_id)
+            if new_watermark:
+                conversations[chat_id]['watermark'] = new_watermark
 
-                # 3. Poll activities with a short timeout loop to reduce latency.
-                # Try frequently for up to POLL_TIMEOUT seconds before giving up.
-                POLL_TIMEOUT = 12.0
-                POLL_INTERVAL = 0.5
-                elapsed = 0.0
-                bot_response = None
-                new_watermark = session.get('watermark')
-                # We may receive multiple activities (guidance + confirmation). Process each safely.
-                setup_confirmed_sent = False
-                while elapsed < POLL_TIMEOUT:
-                    activities, nw = get_copilot_response(session['conv_id'], session['token'], new_watermark, user_from_id=session.get('from_id', str(chat_id)))
-                    if activities:
-                        try:
-                            for act in activities:
-                                # Normalize activity
-                                act_id = act.get('id')
-                                text = act.get('text') if isinstance(act.get('text'), str) else None
-                                if not act_id or not text:
-                                    continue
+            # --- Process and forward responses to Telegram ---
+            if not bot_responses:
+                app.logger.info("No immediate bot response for chat %s. Starting long poll.", chat_id)
+                # Start a background poller if no immediate answer
+                if not conversations[chat_id].get('is_polling'):
+                    conversations[chat_id]['is_polling'] = True
+                    poller_thread = threading.Thread(
+                        target=long_poll_for_activity,
+                        args=(conv_id, token, user_from_id, new_watermark or last_watermark, chat_id)
+                    )
+                    poller_thread.daemon = True
+                    poller_thread.start()
+            else:
+                app.logger.info("Got %d immediate bot responses for chat %s.", len(bot_responses), chat_id)
+                for activity in bot_responses:
+                    activity_id = activity.get('id')
+                    if activity_id in recent_activity_ids[chat_id]:
+                        app.logger.warning("Skipping duplicate activity ID %s for chat %s", activity_id, chat_id)
+                        continue
+                    
+                    recent_activity_ids[chat_id].append(activity_id)
+                    
+                    bot_text = activity.get('text', '').strip()
+                    if not bot_text:
+                        continue
 
-                                # Deduplicate
-                                if act_id in recent_activity_ids[chat_id]:
-                                    continue
-                                recent_activity_ids[chat_id].append(act_id)
+                    app.logger.info("Processing bot message for chat %s: '%s'", chat_id, bot_text)
 
-                                # Skip known noisy/setup guidance messages
-                                try:
-                                    if should_skip_forwarding(text):
-                                        app.logger.info("Skipping Copilot guidance/question (pre-parse) for chat %s: %s", chat_id, text[:140])
-                                        continue
-                                except Exception:
-                                    pass
+                    # Try to parse setup confirmation and persist it
+                    if parse_and_persist_setup(chat_id, bot_text):
+                        app.logger.info("Setup complete for chat %s. Sending canonical confirmation.", chat_id)
+                        settings = db.get_chat_settings(chat_id)
+                        if settings and settings.get('language_names'):
+                            # Send a clean, canonical confirmation and remove any temporary keyboards
+                            send_telegram_message(chat_id, f"Thanks! Setup is complete. Now we speak {settings['language_names']}.\nSend your message and I'll translate it.")
+                            send_reply_keyboard_remove(chat_id)
+                        continue # Don't forward the original bot message
 
-                                # Try to parse and persist setup confirmation
-                                parsed = False
-                                try:
-                                    parsed = parse_and_persist_setup(chat_id, text)
-                                except Exception:
-                                    parsed = False
+                    # Skip forwarding certain messages to the user
+                    if should_skip_forwarding(bot_text):
+                        app.logger.info("Skipping forward of bot message to chat %s: '%s'", chat_id, bot_text)
+                        continue
 
-                                if parsed:
-                                    # Send a single canonical confirmation message
-                                    try:
-                                        if not setup_confirmed_sent:
-                                            try:
-                                                send_reply_keyboard_remove(chat_id)
-                                            except Exception:
-                                                pass
-                                            send_telegram_message(chat_id, "Language settings saved. You can now send messages for translation.")
-                                            setup_confirmed_sent = True
-                                    except Exception:
-                                        pass
-                                    # Do not forward the original Copilot confirmation
-                                    continue
+                    # Forward the bot's message to the user
+                    app.logger.info("Forwarding bot message to chat %s: '%s'", chat_id, bot_text)
+                    send_telegram_message(chat_id, bot_text)
 
-                                # Forward regular bot text to the Telegram user
-                                try:
-                                    app.logger.info("Forwarding regular message to chat %s", chat_id)
-                                    send_telegram_message(chat_id, text)
-                                    bot_response = True
-                                except Exception:
-                                    pass
-                        except Exception as e:
-                            app.logger.error("Error while processing activities for chat %s: %s", chat_id, e, exc_info=True)
-
-                        # Advance watermark to the newest seen
-                        new_watermark = nw
-
-                    # Wait a short interval and continue polling until timeout to catch late activities
-                    time.sleep(POLL_INTERVAL)
-                    elapsed = time.time() - start_ts
-
-                # update stored watermark even if no response
-                try:
-                    if chat_id in conversations:
-                        conversations[chat_id]['watermark'] = new_watermark
-                except Exception:
-                    pass
-
-                duration = time.time() - start_ts
-                app.logger.info(f"Processed message for chat={chat_id} duration={duration:.2f}s found_response={bool(bot_response)}")
-
-                # 4. Ответ(ы) уже были отправлены в Telegram выше when iterating activities.
-                # Avoid sending a boolean or duplicate message here (was sending 'True').
-                if not bot_response:
-                    # optional: send a short fallback so user isn't left waiting silently
-                    try:
-                        send_telegram_message(chat_id, "I'm processing your request and will reply shortly...")
-                    except Exception:
-                        pass
-                    # start a background long-poller to catch delayed bot replies (if not already polling)
-                    try:
-                        # Use the local `session` reference so that concurrent deletion
-                        # of conversations[chat_id] (e.g. via /reset) won't raise KeyError.
-                        if not session.get('polling'):
-                            session['polling'] = True
-                            import threading as _threading
-                            lp = _threading.Thread(target=long_poll_for_activity, args=(session['conv_id'], session['token'], session.get('from_id', str(chat_id)), new_watermark, chat_id))
-                            lp.daemon = True
-                            lp.start()
-                    except Exception:
-                        pass
         except Exception as e:
             import traceback
             tb = traceback.format_exc()

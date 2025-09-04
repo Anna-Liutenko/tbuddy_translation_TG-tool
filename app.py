@@ -91,7 +91,7 @@ import db
 def parse_and_persist_setup(chat_id, text, persist=True):
     """Try to extract language names from Copilot's setup confirmation and persist them.
 
-    If persist=False, it only checks if the text is a valid confirmation without saving.
+    This version uses a more precise regex to capture only the language names.
     Returns True if something was parsed, False otherwise.
     """
     try:
@@ -103,22 +103,27 @@ def parse_and_persist_setup(chat_id, text, persist=True):
         if 'setup is complete' not in lowered and 'now we speak' not in lowered:
             return False
 
-        # More robust language extraction
-        s = text
-        # Remove confirmation prefixes
-        s = re.sub(r'^(setup is complete\.|thanks!|great!)\s*', '', s, flags=re.IGNORECASE).strip()
-        s = re.sub(r'^now we speak\s*', '', s, flags=re.IGNORECASE).strip()
-        # Remove instructional suffixes
-        s = re.sub(r'\.\s*send your message.*$', '', s, flags=re.IGNORECASE).strip()
+        # Regex to find the language list after "Now we speak" or similar phrases.
+        # It captures the part between the introductory phrase and the closing sentence.
+        match = re.search(r'(?:now we speak|setup is complete\.|thanks!)\s*(.*?)\s*(?:\.|$)', text, re.IGNORECASE | re.DOTALL)
+        if not match:
+            # Fallback for slightly different phrasing
+            match = re.search(r'now we speak\s(.*?)(?=\. Send your message)', text, re.IGNORECASE)
+            if not match:
+                return False
 
-        if not s:
+        lang_string = match.group(1).strip()
+        # Further clean up just in case (e.g., remove trailing "Send your message...")
+        lang_string = re.sub(r'\s*\.?\s*send your message.*$', '', lang_string, re.IGNORECASE).strip()
+
+        if not lang_string:
             return False
 
         # Split by common delimiters
-        parts = re.split(r'[,;]| and | or ', s)
+        parts = re.split(r'[,;]| and | or ', lang_string)
         names = [p.strip().strip('.,:; ') for p in parts if p and p.strip() and len(p.strip()) > 1]
 
-        if len(names) < 1: # Even one language is a valid confirmation
+        if not names:
             return False
 
         lang_names = ', '.join(names)
@@ -280,8 +285,14 @@ def get_copilot_response(conversation_id, token, last_watermark, user_from_id="u
         except Exception:
             data = {}
         activities = data.get('activities', []) if isinstance(data, dict) else []
-        # Filter activities that are not from the Telegram user and have text
-        bot_activities = [act for act in activities if act.get('from', {}).get('id') != str(user_from_id) and act.get('text')]
+        # Filter activities to only include actual messages from the bot with text content.
+        # This avoids processing typing indicators or other non-message events.
+        bot_activities = [
+            act for act in activities 
+            if act.get('type') == 'message' and 
+               act.get('from', {}).get('id') != str(user_from_id) and 
+               act.get('text', '').strip()
+        ]
         new_watermark = data.get('watermark', last_watermark)
         try:
             # Log a short, non-sensitive summary so operators can see activity volume.

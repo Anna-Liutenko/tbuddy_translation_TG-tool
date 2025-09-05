@@ -91,8 +91,23 @@ def dump_all(sqlite_file: Optional[str] = None) -> List[Dict[str, str]]:
     return rows
 
 
+def delete_chat_settings(chat_id: str, sqlite_file: Optional[str] = None) -> None:
+    """Delete the chat settings row for a given chat_id."""
+    if DATABASE_URL:
+        raise NotImplementedError("Postgres backend not implemented - remove DATABASE_URL or implement backend.")
+    conn = _get_sqlite_conn(sqlite_file)
+    conn.execute('DELETE FROM ChatSettings WHERE chat_id = ?', (str(chat_id),))
+    conn.commit()
+    conn.close()
+
+
 if __name__ == '__main__':
-    # quick smoke: print rows
+    # quick smoke: log rows instead of printing to stdout
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    log = logging.getLogger('db')
     init_db()
+    # Example of deleting a chat setting (use with caution)
+    # delete_chat_settings('some_chat_id') 
     for r in dump_all():
-        print(r)
+        log.info("row=%s", r)

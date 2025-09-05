@@ -1,1 +1,0 @@
-This folder was a copy of the Copilot Studio topics and screenshots used for debugging. You requested removal of the `context/` folder from the repo; a lightweight in-repo backup record has been left here. If you need the full backup later, consider creating an external zip or storing in a safe location before deletion.

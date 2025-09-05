@@ -5,19 +5,22 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from db import init_db, dump_all, upsert_chat_settings, get_chat_settings
 from datetime import datetime
+import logging
 
 
 def run():
-    print('Initializing DB...')
+    logging.basicConfig(level=logging.INFO)
+    log = logging.getLogger('smoke_db')
+    log.info('Initializing DB...')
     init_db()
-    print('Inserting test row...')
+    log.info('Inserting test row...')
     upsert_chat_settings('test_chat', 'en,ru', 'English, Russian', datetime.utcnow().isoformat())
-    print('Dumping rows:')
+    log.info('Dumping rows:')
     rows = dump_all()
     for r in rows:
-        print(r)
-    print('Fetching test_chat:')
-    print(get_chat_settings('test_chat'))
+        log.info('row=%s', r)
+    log.info('Fetching test_chat:')
+    log.info('result=%s', get_chat_settings('test_chat'))
 
 
 if __name__ == '__main__':

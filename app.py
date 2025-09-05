@@ -1,13 +1,17 @@
 import os
+import sys
+import time
+import json
+import logging
+import re
 import requests
+import threading
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 import db
 from collections import deque, defaultdict
 from datetime import datetime
-import re
-import json
-import logging
+from logging.handlers import RotatingFileHandler
 
 # Загружаем переменные из файла .env
 load_dotenv()
@@ -22,23 +26,55 @@ DIRECT_LINE_SECRET = os.getenv("DIRECT_LINE_SECRET")
 # 3. URL для получения токена Direct Line.
 DIRECT_LINE_ENDPOINT = "https://directline.botframework.com/v3/directline/conversations"
 
-# URL для отправки сообщений в Telegram
-TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendMessage"
+# Note: build Telegram API URL at send time so updated tokens are always used
 # ---------------------------------------------
 # Local debug fallback: when DEBUG_LOCAL=1, messages will be printed to console
 DEBUG_LOCAL = os.getenv('DEBUG_LOCAL', '0') == '1'
 DEBUG_VERBOSE = os.getenv('DEBUG_VERBOSE', '0') == '1'
+# When enabled (set TELEGRAM_LOG_RESPONSES=1 in /etc/tbuddy/env), log full
+# Telegram HTTP request payload and response (status + body) at DEBUG level.
+# Use this temporarily for diagnostics; don't enable permanently in prod.
+TELEGRAM_LOG_RESPONSES = os.getenv('TELEGRAM_LOG_RESPONSES', '0') == '1'
 
 # Инициализация веб-сервера Flask
 app = Flask(__name__)
-# Ensure app logger prints INFO/DEBUG to console
-logging.basicConfig(level=logging.INFO)
-app.logger.setLevel(logging.INFO)
+
+# --- Настройка логирования ---
+LOG_FILE = os.getenv('LOG_FILE', 'run.log')  # По умолчанию пишет в run.log
+LOG_LEVEL_STR = os.getenv('LOG_LEVEL', 'INFO').upper()
+LOG_LEVEL = getattr(logging, LOG_LEVEL_STR, logging.INFO)
+
+# Убираем стандартные обработчики Flask
+app.logger.handlers.clear()
+
+# Настраиваем форматтер
+formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s [in %(pathname)s:%(lineno)d]')
+
+# Обработчик для вывода в консоль (stdout)
+stream_handler = logging.StreamHandler(sys.stdout)
+stream_handler.setFormatter(formatter)
+app.logger.addHandler(stream_handler)
+
+# Обработчик для записи в ротируемый файл, если LOG_FILE указан
+if LOG_FILE:
+    try:
+        # 10 MB на файл, храним 5 старых файлов
+        file_handler = RotatingFileHandler(LOG_FILE, maxBytes=10*1024*1024, backupCount=5)
+        file_handler.setFormatter(formatter)
+        app.logger.addHandler(file_handler)
+    except Exception as e:
+        app.logger.error(f"Не удалось настроить логирование в файл {LOG_FILE}: {e}")
+
+app.logger.setLevel(LOG_LEVEL)
+# --- Конец настройки логирования ---
 
 # Словарь для хранения активных диалогов.
 # В реальном приложении лучше использовать базу данных (например, Redis или SQLite).
 # Ключ: ID чата в Telegram, Значение: ID диалога в Copilot Studio и токен.
 conversations = {}
+# Global dictionary to track active long polling tasks
+active_pollers = {}
 # store last user message per chat as a simple fallback
 last_user_message = {}
 
@@ -51,147 +87,79 @@ DB_PATH = os.path.join(os.path.dirname(__file__), 'chat_settings.db')
 # DB abstraction: use db.py for all ChatSettings access
 # NOTE: db.py currently uses SQLite and will raise NotImplementedError
 # if DATABASE_URL is set. This centralizes DB access for easier future migration.
+import db
 
-
-def parse_and_persist_setup(chat_id, text):
+def parse_and_persist_setup(chat_id, text, persist=True):
     """Try to extract language names from Copilot's setup confirmation and persist them.
 
-    Returns True if something was parsed and persisted, False otherwise.
+    This version uses a more precise regex to capture only the language names.
+    Returns True if something was parsed, False otherwise.
     """
     try:
         if not isinstance(text, str):
             return False
 
-        # Guard: if text looks like a translation block (e.g. "ru: Доброе утро!\nja: ...")
-        # avoid parsing these as language names. Common signs: multiple lines and
-        # lines starting with short language codes followed by ':' or multiple ':' occurrences.
-        try:
-            if '\n' in text or text.count(':') >= 1:
-                lines = [l.strip() for l in text.splitlines() if l.strip()]
-                short_code_line = False
-                for ln in lines:
-                    # matches patterns like 'ru: ...' or 'en: Hello' or 'ja: おはよう'
-                    if re.match(r'^[A-Za-z]{2,3}\s*:', ln):
-                        short_code_line = True
-                        break
-                if short_code_line and len(lines) >= 1:
-                    app.logger.info("Skipping parse: looks like translation block for chat %s: %s", chat_id, text[:120])
-                    return False
-        except Exception:
-            # if detection fails, continue to normal parsing
-            pass
-
+        # More robust check for final confirmation message
         lowered = text.lower()
-        # Ignore clear negative/fallback messages that indicate parsing failed
-        negative_markers = [
-            'no languages', 'no language', 'no languages are', 'no languages mentioned',
-            'no languages are mentioned', 'nothing', 'none'
-        ]
-        for nm in negative_markers:
-            if nm in lowered:
-                app.logger.info("Ignoring negative setup text for chat %s: %s", chat_id, text)
-                return False
+        
+        # Check for the exact confirmation message format from Copilot Studio
+        # "Thanks! Setup is complete. Now we speak {languages}."
+        is_setup_complete = ('setup is complete' in lowered and 'now we speak' in lowered) or \
+                           ('thanks!' in lowered and 'setup is complete' in lowered)
+        
+        if not is_setup_complete:
+            return False
 
-        def extract_language_names_from_text(t):
-            """Try to extract a list of language names from a free text string.
-
-            Returns a list of cleaned names (may be empty).
-            """
-            if not t or not isinstance(t, str):
-                return []
-            s = t.strip()
-            # Remove common trailing sentences
-            for sep in ['Send your message and', 'Send your message', '\n']:
-                if sep in s:
-                    s = s.split(sep, 1)[0]
-            s = s.strip().strip('.,;: ')
-            if not s:
-                return []
-
-            # Prefer comma or 'and' separated lists
-            if ',' in s or '\band\b' in s:
-                parts = re.split(r',|\band\b', s)
+        # Try to find languages after "Now we speak" pattern
+        # Example: "Thanks! Setup is complete. Now we speak English, Russian, Japanese."
+        match = re.search(r'now we speak\s+([^.\n]+)', text, re.IGNORECASE)
+        if not match:
+            # Fallback: try to extract from the entire message if it contains setup confirmation
+            # Look for pattern like "English, Russian" in the text
+            lang_match = re.search(r'([A-Z][a-z]+(?:,\s*[A-Z][a-z]+)*)', text)
+            if lang_match:
+                lang_string = lang_match.group(1).strip()
             else:
-                # fallback: split by slash or semicolon
-                if '/' in s:
-                    parts = s.split('/')
-                elif ';' in s:
-                    parts = s.split(';')
-                else:
-                    # last resort: split by spaces but only accept if looks like a short list
-                    tokens = s.split()
-                    # if there are multiple tokens and not a long sentence, treat each token as a language
-                    if 1 < len(tokens) <= 6:
-                        parts = tokens
-                    else:
-                        return []
+                return False
+        else:
+            lang_string = match.group(1).strip()
+        
+        # Remove any trailing text like "Send your message..."
+        if '\n' in lang_string:
+            lang_string = lang_string.split('\n')[0].strip()
+        if '.' in lang_string:
+            lang_string = lang_string.split('.')[0].strip()
+        
+        # Clean up the string
+        lang_string = lang_string.strip('.,:; ')
+        
+        if not lang_string:
+            return False
 
-            cleaned = [p.strip().strip('.,;: ') for p in parts if p and p.strip()]
-            valid = []
-            for n in cleaned:
-                ln = n.lower()
-                if any(x in ln for x in ['no ', 'none', 'nothing', 'not']):
-                    continue
-                # require at least one alphabetic character (Latin or Cyrillic)
-                if re.search(r'[A-Za-zА-Яа-я]', n):
-                    valid.append(n)
-            return valid
+        # For cases like "No languages are mentioned..." - don't save
+        if 'no languages' in lang_string.lower():
+            app.logger.warning("Copilot reported no languages for chat %s: %s", chat_id, lang_string)
+            return False
 
-        # 1) Try to parse the canonical confirmation text: look for markers
-        after = None
-        if 'now we speak' in lowered:
-            # case-insensitive split
-            parts = re.split(r'now we speak', text, flags=re.IGNORECASE)
-            after = parts[1] if len(parts) > 1 else None
-        elif 'setup is complete' in lowered:
-            parts = re.split(r'setup is complete', text, flags=re.IGNORECASE)
-            after = parts[1] if len(parts) > 1 else None
+        # Split by common delimiters
+        parts = re.split(r'[,;]|\s+and\s+', lang_string)
+        names = [p.strip().strip('.,:; ') for p in parts if p and p.strip() and len(p.strip()) > 1]
 
-        names = []
-        if after:
-            names = extract_language_names_from_text(after)
-
-        # 2) If no names found in canonical confirmation, try to extract directly from the provided text
         if not names:
-            names = extract_language_names_from_text(text)
-
-        # Require at least two languages to avoid false positives (copilot prompt asks 2-3 languages)
-        if not names or len(names) < 2:
-            app.logger.info("No valid language names parsed from text for chat %s: %s", chat_id, text)
+            app.logger.warning("Could not extract language names from: %s", lang_string)
             return False
 
         lang_names = ', '.join(names)
-        app.logger.info("Persisting parsed language names for chat %s: %s", chat_id, lang_names)
-        # store language_codes as empty string for now to preserve original schema
-        try:
+        
+        if persist:
+            app.logger.info("SUCCESS: Parsed and persisting language names for chat %s: [%s]", chat_id, lang_names)
             db.upsert_chat_settings(chat_id, '', lang_names, datetime.utcnow().isoformat())
-        except Exception as _e:
-            app.logger.error("Failed to persist chat settings for %s: %s", chat_id, _e)
-        return True
+        
+        return True # Return True if parsing was successful
     except Exception as e:
-        app.logger.error("Error parsing/persisting setup for chat %s: %s", chat_id, e)
+        app.logger.error("Error in parse_and_persist_setup for chat %s: %s", chat_id, e, exc_info=True)
         return False
-
-
-def is_language_question(text):
-    """Return True if the bot text looks like a question asking the user to provide languages."""
-    try:
-        if not text or not isinstance(text, str):
-            return False
-        lw = text.lower()
-        # must mention 'language' or 'languages'
-        if 'language' not in lw and 'languages' not in lw:
-            return False
-        triggers = ['what', "what's", 'which', 'prefer', 'write', 'specify', 'please', 'put']
-        if any(t in lw for t in triggers):
-            return True
-        # explicit prompt forms
-        if 'write 2' in lw or '2 or 3' in lw or 'write 3' in lw:
-            return True
-        return False
-    except Exception:
-        return False
-
+    
 db.init_db()
 
 def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_id, total_timeout=120.0, interval=1.0):
@@ -202,9 +170,17 @@ def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_i
     """
     import time
     try:
+        # Mark this poller as active
+        active_pollers[chat_id] = True
+        
         t0 = time.time()
         nw = start_watermark
         while time.time() - t0 < total_timeout:
+            # Check if we should stop polling
+            if not active_pollers.get(chat_id, False):
+                app.logger.info("Long poller stopping for chat=%s (cancelled)", chat_id)
+                break
+                
             activities, new_nw = get_copilot_response(conv_id, token, nw, user_from_id=user_from_id)
             if activities:
                 # update watermark
@@ -215,28 +191,36 @@ def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_i
                 # forward each activity if not seen before
                 for act in activities:
                     act_id = act.get('id')
-                    text = act.get('text')
+                    text = act.get('text', '').strip()
                     if not act_id or not text:
                         continue
                     if act_id in recent_activity_ids[chat_id]:
                         continue
                     recent_activity_ids[chat_id].append(act_id)
-                    try:
-                        send_telegram_message(chat_id, text)
-                    except Exception:
-                        pass
-                app.logger.info("Long-poller forwarded %d activities for chat=%s", len(activities), chat_id)
+
+                    # Пытаемся извлечь и сохранить настройки, если это сообщение-подтверждение.
+                    if parse_and_persist_setup(chat_id, text, persist=True):
+                        app.logger.info("Распознано и сохранено подтверждение настройки (long-poll) для чата %s.", chat_id)
+
+                    # Всегда пересылаем оригинальное сообщение от бота пользователю.
+                    app.logger.info("Пересылка сообщения бота в чат (long-poll) %s: '%s'", chat_id, text)
+                    send_telegram_message(chat_id, text)
+
+                app.logger.info("Long-poller обработал %d активностей для чата=%s", len(activities), chat_id)
                 break
             nw = new_nw
             time.sleep(interval)
     except Exception as e:
         app.logger.error("Long poller exception for chat=%s: %s", chat_id, e)
     finally:
-        # clear polling flag
+        # clear polling flags
+        active_pollers.pop(chat_id, None)
         try:
-            conversations[chat_id]['polling'] = False
+            if chat_id in conversations:
+                conversations[chat_id]['is_polling'] = False
         except Exception:
             pass
+
 
 def start_direct_line_conversation():
     """Начинает новый диалог с ботом Copilot Studio и возвращает токен и ID диалога."""
@@ -255,45 +239,67 @@ def start_direct_line_conversation():
         # Defensive extraction: docs may return token and conversationId at top-level
         token = data.get('token') or data.get('conversationToken') or None
         conv_id = data.get('conversationId') or data.get('conversation', {}).get('id') or None
-        print("Успешно начали диалог с Direct Line.")
-        print("DL create response:", data)
+        # Avoid printing the full Direct Line response (it may include a token).
+        # Log only non-sensitive metadata; if verbose debugging is enabled, log a redacted copy.
+        try:
+            app.logger.info("Started Direct Line conversation convo=%s keys=%s", conv_id, list(data.keys()) if isinstance(data, dict) else None)
+            if DEBUG_VERBOSE and isinstance(data, dict):
+                redacted = dict(data)
+                if 'token' in redacted:
+                    redacted['token'] = '<REDACTED>'
+                app.logger.debug("DL create response (redacted): %s", redacted)
+        except Exception:
+            pass
         # If API did not return a conversation token, fall back to using the secret for server-side calls
         if not token:
             token = DIRECT_LINE_SECRET
-            print("No conversation token returned by DL; falling back to DIRECT_LINE_SECRET for auth (server-side).")
+            app.logger.warning("No conversation token returned by DL; falling back to DIRECT_LINE_SECRET for auth (server-side).")
         if not conv_id:
-            print("Warning: conversationId missing in Direct Line response")
+            app.logger.warning("conversationId missing in Direct Line response")
             return None, None
         # Return (token, conversationId) - note order expected by callers
-        return token, conv_id
+        return conv_id, token
     else:
-        print(f"Ошибка при старте диалога: {response.status_code} {response.text}")
+        # avoid logging potentially large bodies without truncation
+        body = (response.text or '')[:200]
+        app.logger.error("Error starting Direct Line conversation: %s %s", response.status_code, body)
         return None, None
 
 def send_message_to_copilot(conversation_id, token, text, from_id="user"):
-    """Отправляет сообщение пользователя в Copilot Studio."""
+    """Отправляет сообщение пользователя в Copilot Studio и возвращает ID активности."""
     url = f"https://directline.botframework.com/v3/directline/conversations/{conversation_id}/activities"
     headers = {
         'Authorization': f'Bearer {token}',
         'Content-Type': 'application/json'
     }
+    # Ensure unique from_id for each Telegram user to avoid conversation mixing
+    unique_from_id = f"telegram_user_{from_id}"
     payload = {
         "type": "message",
-    # Use a per-telegram-user from.id so BotFramework can distinguish users
-    "from": {"id": str(from_id)},
+        "from": {"id": unique_from_id, "name": f"TelegramUser{from_id}"},
         "text": text
     }
-    response = requests.post(url, headers=headers, json=payload, timeout=10)
-    # Direct Line may return 200 or 201 on activity post
-    app.logger.info("DirectLine send activity status=%s convo=%s", response.status_code, conversation_id)
-    if response.status_code in (200, 201):
-        try:
-            j = response.json()
-            app.logger.debug("DL send keys=%s", list(j.keys()) if isinstance(j, dict) else None)
-        except Exception:
-            app.logger.debug("DL send: no json body")
-    else:
-        app.logger.warning("Ошибка отправки сообщения: %s %s", response.status_code, (response.text or '')[:200])
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        app.logger.info("DirectLine send activity status=%s convo=%s from_id=%s", response.status_code, conversation_id, unique_from_id)
+        if response.status_code in (200, 201):
+            try:
+                j = response.json()
+                activity_id = j.get('id')
+                if not activity_id:
+                    app.logger.warning("DL send response did not contain an activity ID.")
+                    return None
+                app.logger.debug("DL send successful, activity_id=%s", activity_id)
+                return activity_id
+            except (json.JSONDecodeError, AttributeError) as e:
+                app.logger.error("DL send failed to parse JSON response: %s", e)
+                return None
+        else:
+            app.logger.warning("Ошибка отправки сообщения: %s %s", response.status_code, (response.text or '')[:200])
+            return None
+    except requests.exceptions.RequestException as e:
+        app.logger.error("Failed to send message to DirectLine: %s", e)
+        return None
 
 def get_copilot_response(conversation_id, token, last_watermark, user_from_id="user"):
     """Return list of bot activities (dicts) not from user and updated watermark."""
@@ -312,150 +318,249 @@ def get_copilot_response(conversation_id, token, last_watermark, user_from_id="u
         except Exception:
             data = {}
         activities = data.get('activities', []) if isinstance(data, dict) else []
-        # Filter activities that are not from the Telegram user and have text
-        bot_activities = [act for act in activities if act.get('from', {}).get('id') != str(user_from_id) and act.get('text')]
+        
+        # Create the expected user ID format
+        expected_user_id = f"telegram_user_{user_from_id}"
+        
+        # Filter activities to only include actual messages from the bot with text content.
+        # This avoids processing typing indicators or other non-message events.
+        # TEMPORARY DEBUG: Log all activities to see what we're missing
+        for act in activities:
+            app.logger.info("DEBUG ACTIVITY: type=%s, from_id=%s, text=%s, has_text=%s", 
+                          act.get('type'), act.get('from', {}).get('id'), 
+                          repr(act.get('text', '')[:100]), bool(act.get('text', '').strip()))
+        
+        bot_activities = [
+            act for act in activities 
+            if act.get('type') == 'message' and 
+               act.get('from', {}).get('id') != expected_user_id and 
+               act.get('text', '').strip()
+        ]
         new_watermark = data.get('watermark', last_watermark)
         try:
-            print("DL activities response (count):", len(activities))
-            # Print a small sample by default
-            print("DL activities sample:", activities[:3])
-            # When verbose enabled, print full activities JSON (no secrets)
-            if DEBUG_VERBOSE:
+            # Log a short, non-sensitive summary so operators can see activity volume.
+            app.logger.info("DL activities count=%d bot_activities=%d convo=%s user_id=%s", len(activities), len(bot_activities), conversation_id, expected_user_id)
+            # Log a small redacted sample when verbose debugging is explicitly enabled.
+            if DEBUG_VERBOSE and isinstance(activities, list):
+                def _redact_activity(a):
+                    if not isinstance(a, dict):
+                        return '<non-dict-activity>'
+                    ra = {}
+                    for k, v in a.items():
+                        # redact potentially large or sensitive fields
+                        if k in ('channelData', 'attachments', 'entities'):
+                            ra[k] = '<REDACTED>'
+                        elif k in ('streamUrl', 'token'):
+                            ra[k] = '<REDACTED>'
+                        elif k == 'text':
+                            try:
+                                if isinstance(v, str) and len(v) > 200:
+                                    ra[k] = v[:200] + '...'
+                                else:
+                                    ra[k] = v
+                            except Exception:
+                                ra[k] = '<unreadable-text>'
+                        else:
+                            ra[k] = v
+                    return ra
+
+                redacted_sample = [_redact_activity(a) for a in activities[:3]]
                 try:
-                    print('DL activities full JSON:\n', json.dumps(activities, ensure_ascii=False, indent=2))
+                    app.logger.debug("DL activities (redacted sample): %s", json.dumps(redacted_sample, ensure_ascii=False, indent=2))
                 except Exception:
-                    print('DL activities full (raw):', activities)
+                    app.logger.debug("DL activities (redacted sample): %s", str(redacted_sample))
         except Exception:
             pass
         return bot_activities, new_watermark
     else:
-        print(f"Ошибка получения ответа: {response.status_code} {response.text}")
+        body = (response.text or '')[:200]
+        app.logger.error("Error fetching Direct Line activities: %s %s", response.status_code, body)
         return [], last_watermark
 
 @app.route('/webhook', methods=['POST'])
 def telegram_webhook():
-    """Эта функция вызывается, когда Telegram присылает новое сообщение.
+    """Основной обработчик входящих сообщений от Telegram."""
+    data = request.get_json()
+    if DEBUG_VERBOSE:
+        app.logger.debug("Received Telegram webhook: %s", json.dumps(data, indent=2))
 
-    Обрабатываем входящую активность в фоне (thread) и возвращаем 200 сразу.
-    Это уменьшает вероятность 502/504 от reverse-proxy или провайдера из-за долгой обработки.
-    """
-    update = request.get_json(silent=True)
+    # 1. Извлекаем информацию только из текстовых сообщений
+    if 'message' not in data or 'text' not in data['message']:
+        app.logger.info("Webhook received a non-text message update. Ignoring.")
+        return jsonify(success=True)
 
-    def process_update(update_obj):
+    message = data['message']
+    chat_id = message['chat']['id']
+    user_from_id = message['from']['id']
+    chat_type = message['chat'].get('type', 'private')
+    text = message.get('text', '').strip()
+
+    if not text:
+        return jsonify(success=True)
+
+    # For group chats, only respond to messages that start with bot commands or mention the bot
+    if chat_type in ['group', 'supergroup']:
+        # Get bot info to check for mentions
+        bot_username = None  # We could get this from getMe API call if needed
+        
+        # Only process if it's a command or if the bot is mentioned
+        if not (text.startswith('/') or (bot_username and f'@{bot_username}' in text)):
+            # In groups, ignore regular messages unless they're commands
+            app.logger.info("Ignoring non-command message in group chat %s", chat_id)
+            return jsonify(success=True)
+        
+        # Remove bot mention if present
+        if bot_username and f'@{bot_username}' in text:
+            text = text.replace(f'@{bot_username}', '').strip()
+
+    # Fire-and-forget: send 'typing' action to Telegram ~1s after we receive the user's message.
+    def _send_typing_after_delay(cid, delay_sec=1.0):
         try:
-            if not update_obj:
-                app.logger.warning("Empty update_obj in background worker")
-                return
-
-            if "message" in update_obj and "text" in update_obj["message"]:
-                chat_id = update_obj["message"]["chat"]["id"]
-                user_message = update_obj["message"]["text"]
-                # persist last user message for fallback parsing later
-                try:
-                    last_user_message[chat_id] = user_message
-                except Exception:
-                    pass
-                app.logger.info(f"[worker] Received message from {chat_id}: {user_message}")
-
-                # Проверяем, есть ли уже активный диалог для этого чата
-                if chat_id not in conversations:
-                    token, conv_id = start_direct_line_conversation()
-                    if not token:
-                        app.logger.error("Could not start Direct Line conversation for chat %s", chat_id)
-                        return
-                    # create a per-chat from_id so DL user activities are tied to this Telegram chat
-                    from_id = f"telegram_{chat_id}"
-                    conversations[chat_id] = {"conv_id": conv_id, "token": token, "watermark": None, "from_id": from_id}
-
-                session = conversations[chat_id]
-
-                # 1. Отправляем сообщение пользователя в Copilot
-                import time
-                start_ts = time.time()
-
-                # 1. Отправляем сообщение пользователя в Copilot
-                send_message_to_copilot(session['conv_id'], session['token'], user_message, from_id=session.get('from_id', str(chat_id)))
-
-                # 2. Let the user know we're processing (typing...) — non-blocking
-                try:
-                    typing_url = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendChatAction"
-                    requests.post(typing_url, data={'chat_id': chat_id, 'action': 'typing'}, timeout=2)
-                except Exception:
-                    pass
-
-                # 3. Poll activities with a short timeout loop to reduce latency.
-                # Try frequently for up to POLL_TIMEOUT seconds before giving up.
-                POLL_TIMEOUT = 12.0
-                POLL_INTERVAL = 0.5
-                elapsed = 0.0
-                bot_response = None
-                new_watermark = session.get('watermark')
-                while elapsed < POLL_TIMEOUT:
-                    activities, nw = get_copilot_response(session['conv_id'], session['token'], new_watermark, user_from_id=session.get('from_id', str(chat_id)))
-                    if activities:
-                        for act in activities:
-                            act_id = act.get('id')
-                            text = act.get('text')
-                            if not act_id or not text:
-                                continue
-                            if act_id in recent_activity_ids[chat_id]:
-                                continue
-                            recent_activity_ids[chat_id].append(act_id)
-                            # Try central helper to parse Copilot setup confirmation and persist settings
-                            try:
-                                # Only attempt to parse/persist when Copilot itself sends a confirmation message
-                                parse_and_persist_setup(chat_id, text)
-                            except Exception:
-                                pass
-                            send_telegram_message(chat_id, text)
-                        new_watermark = nw
-                        bot_response = True
-                        break
-                    time.sleep(POLL_INTERVAL)
-                    elapsed = time.time() - start_ts
-
-                # update stored watermark even if no response
-                conversations[chat_id]['watermark'] = new_watermark
-
-                duration = time.time() - start_ts
-                app.logger.info(f"Processed message for chat={chat_id} duration={duration:.2f}s found_response={bool(bot_response)}")
-
-                # 4. Ответ(ы) уже были отправлены в Telegram выше when iterating activities.
-                # Avoid sending a boolean or duplicate message here (was sending 'True').
-                if not bot_response:
-                    # optional: send a short fallback so user isn't left waiting silently
-                    try:
-                        send_telegram_message(chat_id, "I'm processing your request and will reply shortly...")
-                    except Exception:
-                        pass
-                    # start a background long-poller to catch delayed bot replies (if not already polling)
-                    try:
-                        if not conversations[chat_id].get('polling'):
-                            conversations[chat_id]['polling'] = True
-                            import threading as _threading
-                            lp = _threading.Thread(target=long_poll_for_activity, args=(session['conv_id'], session['token'], session.get('from_id', str(chat_id)), new_watermark, chat_id))
-                            lp.daemon = True
-                            lp.start()
-                    except Exception:
-                        pass
+            time.sleep(delay_sec)
+            send_telegram_typing_action(cid)
         except Exception as e:
-            import traceback
-            tb = traceback.format_exc()
-            app.logger.error("Exception in background worker: %s\n%s", e, tb)
+            app.logger.debug("Typing-thread exception for chat %s: %s", cid, e)
 
-    # Запускаем обработку в фоновом потоке и возвращаем 200 немедленно
-    try:
-        import threading
-        worker = threading.Thread(target=process_update, args=(update,))
-        worker.daemon = True
-        worker.start()
-    except Exception as e:
-        app.logger.error("Failed to start background worker: %s", e)
+    t = threading.Thread(target=_send_typing_after_delay, args=(chat_id, 1.0))
+    t.daemon = True
+    t.start()
 
-    # Возвращаем ответ Telegram сразу, чтобы избежать таймаутов и 502/504
-    return jsonify(status="ok")
+    app.logger.info("Processing text '%s' for chat_id %s (type: %s, user: %s)", text, chat_id, chat_type, user_from_id)
+    last_user_message[chat_id] = text
 
+    # 2. Обработка команды /reset
+    if text == '/reset':
+        app.logger.info("Processing /reset for chat %s. Clearing all state.", chat_id)
+        
+        # Stop any active long polling for this chat
+        active_pollers[chat_id] = False
+        
+        try:
+            db.delete_chat_settings(chat_id)
+            app.logger.info("Deleted DB settings for chat %s", chat_id)
+        except Exception as e:
+            app.logger.error("Error deleting DB settings for chat %s: %s", chat_id, e, exc_info=True)
+        
+        # Очищаем состояние в памяти
+        conversations.pop(chat_id, None)
+        last_user_message.pop(chat_id, None)
+        if chat_id in recent_activity_ids:
+            del recent_activity_ids[chat_id]
+        app.logger.info("Cleared in-memory state for chat %s", chat_id)
+        
+        # Запускаем логику настройки, как при /start
+        text = 'start'
 
+    # 3. Обработка команды /start
+    if text == '/start':
+        text = 'start' # Убедимся, что текст именно 'start'
+        if chat_id in conversations:
+            app.logger.info("Clearing stale in-memory conversation for chat %s due to /start", chat_id)
+            # Stop any active long polling for this chat
+            active_pollers[chat_id] = False
+            conversations.pop(chat_id, None)
+
+    # 4. Получаем или создаем диалог с Copilot Studio
+    if chat_id not in conversations:
+        app.logger.info("No active conversation for chat %s. Starting a new one.", chat_id)
+        
+        # Stop any leftover long polling for this chat
+        active_pollers[chat_id] = False
+        
+        conv_id, token = start_direct_line_conversation()
+        if conv_id and token:
+            conversations[chat_id] = {
+                'id': conv_id,
+                'token': token,
+                'watermark': None,
+                'last_interaction': time.time(),
+                'is_polling': False
+            }
+            app.logger.info("Started new DirectLine conversation for chat %s: %s", chat_id, conv_id)
+            
+            # КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Проверяем, есть ли уже настроенные языки в БД
+            # Если есть - значит пользователь уже прошел настройку и отправляет сообщение для перевода
+            try:
+                existing_settings = db.get_chat_settings(chat_id)
+                if existing_settings and existing_settings.get('language_names'):
+                    app.logger.info("Found existing language settings for chat %s: %s. This is a translation request, not setup.", 
+                                  chat_id, existing_settings.get('language_names'))
+                    # Отправляем настройки в новый диалог перед отправкой сообщения пользователя
+                    saved_languages = existing_settings.get('language_names', 'English, Russian, Korean')
+                    setup_message = f"start\n{saved_languages}"  # Используем сохраненные языки
+                    app.logger.info("Sending quick setup to new conversation for chat %s with languages: %s", chat_id, saved_languages)
+                    setup_activity_id = send_message_to_copilot(conv_id, token, setup_message, from_id=user_from_id)
+                    if setup_activity_id:
+                        recent_activity_ids[chat_id].append(setup_activity_id)
+                    # Даем время Copilot обработать настройку
+                    time.sleep(2.5)
+            except Exception as e:
+                app.logger.error("Error checking existing settings for chat %s: %s", chat_id, e, exc_info=True)
+        else:
+            app.logger.error("Failed to start DirectLine conversation for chat %s.", chat_id)
+            error_msg = "Извините, я не смог подключиться к сервису перевода. Пожалуйста, попробуйте еще раз позже."
+            if chat_type in ['group', 'supergroup']:
+                error_msg = "Sorry, I couldn't connect to the translation service. Please try again later."
+            send_telegram_message(chat_id, error_msg)
+            return jsonify(success=False)
+    
+    # 5. Отправляем сообщение в Copilot и получаем ответ
+    conv_id = conversations[chat_id]['id']
+    token = conversations[chat_id]['token']
+    last_watermark = conversations[chat_id]['watermark']
+    conversations[chat_id]['last_interaction'] = time.time()
+
+    activity_id = send_message_to_copilot(conv_id, token, text, from_id=user_from_id)
+    if activity_id:
+        recent_activity_ids[chat_id].append(activity_id)
+    else:
+        app.logger.warning("Не удалось отправить сообщение для чата %s. Предполагаем, что токен истек, начинаем новый разговор.", chat_id)
+        conversations.pop(chat_id, None)
+        error_msg = "Произошла ошибка соединения. Пожалуйста, отправьте свое сообщение еще раз."
+        if chat_type in ['group', 'supergroup']:
+            error_msg = "Connection error occurred. Please resend your message."
+        send_telegram_message(chat_id, error_msg)
+        return jsonify(success=True)
+
+    # 6. Ожидаем и обрабатываем ответ от Copilot
+    time.sleep(1.2)
+    
+    bot_responses, new_watermark = get_copilot_response(conv_id, token, last_watermark, user_from_id)
+    if new_watermark:
+        conversations[chat_id]['watermark'] = new_watermark
+
+    if not bot_responses:
+        app.logger.info("Нет немедленного ответа от бота для чата %s. Запускаем долгий опрос.", chat_id)
+        if not conversations[chat_id].get('is_polling'):
+            conversations[chat_id]['is_polling'] = True
+            poller_thread = threading.Thread(
+                target=long_poll_for_activity,
+                args=(conv_id, token, user_from_id, new_watermark or last_watermark, chat_id)
+            )
+            poller_thread.daemon = True
+            poller_thread.start()
+    else:
+        app.logger.info("Получено %d немедленных ответов от бота для чата %s.", len(bot_responses), chat_id)
+        for activity in bot_responses:
+            activity_id = activity.get('id')
+            if activity_id in recent_activity_ids[chat_id]:
+                app.logger.warning("Пропуск дубликата ID активности %s для чата %s", activity_id, chat_id)
+                continue
+            
+            recent_activity_ids[chat_id].append(activity_id)
+            bot_text = activity.get('text', '').strip()
+            if not bot_text:
+                continue
+
+            # Пытаемся извлечь и сохранить настройки, если это сообщение-подтверждение.
+            if parse_and_persist_setup(chat_id, bot_text, persist=True):
+                app.logger.info("Распознано и сохранено подтверждение настройки (из немедленного ответа) для чата %s.", chat_id)
+
+            # Всегда пересылаем оригинальное сообщение от бота пользователю.
+            app.logger.info("Пересылка сообщения бота в чат %s: '%s'", chat_id, bot_text)
+            send_telegram_message(chat_id, bot_text)
+
+    return jsonify(success=True)
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify(status="ok", message="alive")
@@ -470,57 +575,180 @@ def dump_settings():
     except Exception as e:
         return jsonify(error=str(e)), 500
 
-def send_telegram_message(chat_id, text):
-    """Отправляет текстовое сообщение в указанный чат Telegram."""
+def send_telegram_message(chat_id, text, reply_markup: dict = None):
+    """Отправляет текстовое сообщение в указанный чат Telegram.
+
+    Optional `reply_markup` is a dict matching Telegram's ReplyKeyboardMarkup
+    or InlineKeyboardMarkup structures and will be JSON-encoded when present.
+    """
     payload = {
         'chat_id': chat_id,
         'text': text
     }
+    if reply_markup is not None:
+        try:
+            # If caller provided an inline keyboard, first send a ReplyKeyboardRemove
+            # to ensure any previously shown full-screen reply keyboard is hidden.
+            if isinstance(reply_markup, dict) and 'inline_keyboard' in reply_markup:
+                try:
+                    remove_payload = {'chat_id': chat_id, 'reply_markup': json.dumps({'remove_keyboard': True})}
+                    # best-effort call to remove old reply keyboard
+                    remove_url = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendMessage"
+                    requests.post(remove_url, json=remove_payload, timeout=3)
+                except Exception:
+                    pass
+            payload['reply_markup'] = json.dumps(reply_markup, ensure_ascii=False)
+        except Exception:
+            # fallback: ignore invalid reply_markup
+            app.logger.debug('Invalid reply_markup provided, ignoring')
     # If DEBUG_LOCAL is enabled, don't call Telegram — just print to console for debugging
     if DEBUG_LOCAL:
         app.logger.info("DEBUG_LOCAL enabled — would send to chat %s: %s", chat_id, text)
-        # also print so it's visible in console output
-        print(f"[LOCAL FALLBACK] chat={chat_id} text={text}")
+        # do not print secrets to stdout; keep local fallback in logs only
+        app.logger.debug("[LOCAL FALLBACK] chat=%s text=%s", chat_id, text)
         return True
 
+    # Build URL at call time to pick up current TELEGRAM_API_TOKEN
+    bot_send_url = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendMessage"
     try:
-        response = requests.post(TELEGRAM_URL, json=payload, timeout=5)
+        response = requests.post(bot_send_url, json=payload, timeout=8)
     except Exception as e:
-        app.logger.error("Exception when sending to Telegram for chat %s: %s", chat_id, e)
-        print(f"[LOCAL FALLBACK due to exception] chat={chat_id} text={text}")
+        app.logger.error("Failed to POST to Telegram API for chat=%s: %s", chat_id, e)
         return False
+
+    # Log result; Telegram returns JSON with ok:true/false and description when failed
+    try:
+        resp_text = response.text
+    except Exception:
+        resp_text = '<unreadable response>'
+
+    # Detailed diagnostic logging (controlled by env var)
+    try:
+        if TELEGRAM_LOG_RESPONSES:
+            try:
+                # Log request payload (safe to include chat_id and truncated text)
+                app.logger.debug("Telegram HTTP request for chat=%s payload=%s", chat_id, json.dumps({k: payload[k] for k in ('chat_id','text','reply_markup') if k in payload}, ensure_ascii=False)[:2000])
+            except Exception:
+                app.logger.debug("Telegram HTTP request (unserializable payload) chat=%s", chat_id)
+            app.logger.debug("Telegram HTTP response for chat=%s status=%s body=%s", chat_id, response.status_code, (resp_text or '')[:20000])
+    except Exception:
+        pass
 
     if response.status_code == 200:
-        print(f"Ответ успешно отправлен в чат {chat_id}.")
-        return True
-    else:
-        # On error (for example chat not found), log and fallback to printing the message locally
         try:
-            err_text = response.text
+            j = response.json()
+            if j.get('ok'):
+                app.logger.info("Telegram send succeeded chat=%s", chat_id)
+                return True
+            else:
+                app.logger.warning("Telegram API returned ok=false for chat=%s: %s", chat_id, j)
+                return False
         except Exception:
-            err_text = '<no-response-body>'
-        app.logger.warning("Ошибка отправки в Telegram: %s %s", response.status_code, (err_text or '')[:200])
-        print(f"[TELEGRAM ERROR fallback] status={response.status_code} chat={chat_id} text={text}")
+            app.logger.info("Telegram send HTTP 200 but failed to parse JSON for chat=%s: %s", chat_id, resp_text)
+            return False
+    else:
+        app.logger.error("Telegram send failed chat=%s status=%s body=%s", chat_id, response.status_code, resp_text[:1000])
         return False
+
+
+def send_telegram_typing_action(chat_id):
+    """Send a `typing` action to Telegram for the given chat_id.
+
+    Best-effort: logs failures and returns boolean.
+    """
+    if DEBUG_LOCAL:
+        app.logger.info("DEBUG_LOCAL enabled — would send 'typing' action to chat %s", chat_id)
+        return True
+
+    bot_send_url = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendChatAction"
+    payload = {'chat_id': chat_id, 'action': 'typing'}
+    try:
+        response = requests.post(bot_send_url, json=payload, timeout=3)
+    except Exception as e:
+        app.logger.debug("Exception while sending 'typing' action for chat=%s: %s", chat_id, e)
+        return False
+
+    try:
+        if response.status_code == 200:
+            j = response.json()
+            if j.get('ok'):
+                app.logger.debug("Sent 'typing' action to chat %s", chat_id)
+                return True
+            else:
+                app.logger.debug("Telegram returned ok=false for 'typing' action chat %s: %s", chat_id, j)
+                return False
+        else:
+            app.logger.debug("Non-200 response when sending 'typing' for chat %s: %s %s", chat_id, response.status_code, (response.text or '')[:200])
+            return False
+    except Exception as e:
+        app.logger.debug("Failed to parse Telegram response for 'typing' action chat %s: %s", chat_id, e)
+        return False
+
+
+def send_reply_keyboard_remove(chat_id):
+    """Send a ReplyKeyboardRemove to hide any full-screen reply keyboard in Telegram client."""
+    rm = {'remove_keyboard': True}
+    payload = {'chat_id': chat_id, 'reply_markup': json.dumps(rm)}
+    try:
+        bot_send_url = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendMessage"
+        response = requests.post(bot_send_url, json=payload, timeout=5)
+    except Exception as e:
+        app.logger.debug("Failed to send ReplyKeyboardRemove for chat=%s: %s", chat_id, e)
+        return False
+    # Extra diagnostic logging when enabled
+    try:
+        if TELEGRAM_LOG_RESPONSES:
+            try:
+                app.logger.debug("ReplyKeyboardRemove request payload for chat=%s payload=%s", chat_id, json.dumps(payload, ensure_ascii=False)[:2000])
+            except Exception:
+                app.logger.debug("ReplyKeyboardRemove request (unserializable) for chat=%s", chat_id)
+            try:
+                app.logger.debug("ReplyKeyboardRemove response for chat=%s status=%s body=%s", chat_id, response.status_code, response.text[:20000])
+            except Exception:
+                pass
+    except Exception:
+        pass
+    try:
+        j = response.json()
+        ok = j.get('ok', False)
+    except Exception:
+        ok = response.status_code == 200
+    if ok:
+        app.logger.debug("ReplyKeyboardRemove sent for chat=%s", chat_id)
+    else:
+        app.logger.debug("ReplyKeyboardRemove failed for chat=%s status=%s body=%s", chat_id, response.status_code, response.text[:200])
+    return ok
 
 if __name__ == '__main__':
     # Небольшая проверка переменных окружения — полезно ловить ошибки на старте
     if not TELEGRAM_API_TOKEN:
-        print("WARNING: TELEGRAM_API_TOKEN is not set. Telegram messages will fail.")
+        app.logger.warning("TELEGRAM_API_TOKEN is not set. Telegram messages will fail.")
     if not DIRECT_LINE_SECRET:
-        print("WARNING: DIRECT_LINE_SECRET is not set. Direct Line calls will fail.")
+        app.logger.warning("DIRECT_LINE_SECRET is not set. Direct Line calls will fail.")
 
-    # Запуск в production: рекомендуем использовать Waitress на Windows (простая и надёжная)
+    # Запуск в production: рекомендуем использовать Waitress на  Windows (простая и надёжная)
     # Установите dependency: pip install waitress
     port = int(os.getenv('PORT', '8080'))
     use_waitress = os.getenv('USE_WAITRESS', '1') == '1'
     if use_waitress:
         try:
             from waitress import serve
-            print(f"Starting with Waitress on 0.0.0.0:{port}")
+            app.logger.info("Starting with Waitress on 0.0.0.0:%s", port)
+            # Register bot commands so Telegram clients show slash suggestions (like BotFather)
+            try:
+                if TELEGRAM_API_TOKEN:
+                    cmds_url = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/setMyCommands"
+                    # provide the most common commands the bot supports
+                    commands = [
+                        {"command": "start", "description": "Start or reconfigure language settings"},
+                        {"command": "reset", "description": "Reset language settings"}
+                    ]
+                    requests.post(cmds_url, json={"commands": commands}, timeout=3)
+            except Exception:
+                pass
             serve(app, host='0.0.0.0', port=port)
         except Exception as e:
-            print("Waitress failed to start, falling back to Flask dev server. Error:", e)
+            app.logger.exception("Waitress failed to start, falling back to Flask dev server.")
             app.run(host='0.0.0.0', port=port)
     else:
         app.run(host='0.0.0.0', port=port)

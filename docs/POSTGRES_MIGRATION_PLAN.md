@@ -73,7 +73,7 @@ DATABASE_URL=postgresql://tbuddy_user:STRONG_PASSWORD_HERE@localhost:5432/tbuddy
 E. Установить зависимости в virtualenv (предполагая код в `/opt/tbuddy`):
 ```bash
 cd /opt/tbuddy
-python3.11 -m venv venv
+python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt

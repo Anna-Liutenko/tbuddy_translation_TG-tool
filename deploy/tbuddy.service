@@ -3,15 +3,13 @@ Description=T.Buddy translation relay (Gunicorn)
 After=network.target
 
 [Service]
-Type=simple
-User=tbuddy
-Group=tbuddy
+User=root
+Group=www-data
 WorkingDirectory=/opt/tbuddy
-# Use an EnvironmentFile to keep secrets out of systemd unit; create /etc/tbuddy/env
-EnvironmentFile=/etc/tbuddy/env
-ExecStart=/opt/tbuddy/venv/bin/gunicorn --bind 127.0.0.1:8080 --workers 2 app:app
-Restart=on-failure
-RestartSec=5s
+# Эта строка решит проблему
+EnvironmentFile=/opt/tbuddy/.env
+ExecStart=/opt/tbuddy/.venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8080 app:app
+Restart=always
 
 [Install]
 WantedBy=multi-user.target

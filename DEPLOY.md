@@ -14,7 +14,7 @@ This document explains how to deploy the `tbuddy_translation_TG-tool` Flask rela
 
 ```bash
 sudo apt update && sudo apt upgrade -y
-sudo apt install -y python3.11 python3.11-venv python3-pip nginx certbot python3-certbot-nginx build-essential
+sudo apt install -y python3 python3-venv python3-pip nginx certbot python3-certbot-nginx build-essential
 ```
 
 2. Create a system user and directories:
@@ -35,7 +35,7 @@ cd /opt/tbuddy
 4. Create Python venv and install requirements
 
 ```bash
-python3.11 -m venv /opt/tbuddy/venv
+python3 -m venv /opt/tbuddy/venv
 source /opt/tbuddy/venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt

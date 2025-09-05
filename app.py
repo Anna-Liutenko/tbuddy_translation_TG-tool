@@ -101,20 +101,34 @@ def parse_and_persist_setup(chat_id, text, persist=True):
 
         # More robust check for final confirmation message
         lowered = text.lower()
-        if 'setup is complete' not in lowered and 'now we speak' not in lowered:
+        
+        # Check for the exact confirmation message format from Copilot Studio
+        # "Thanks! Setup is complete. Now we speak {languages}."
+        is_setup_complete = ('setup is complete' in lowered and 'now we speak' in lowered) or \
+                           ('thanks!' in lowered and 'setup is complete' in lowered)
+        
+        if not is_setup_complete:
             return False
 
         # Try to find languages after "Now we speak" pattern
-        # Example: "Now we speak English, Russian, Japanese."
-        match = re.search(r'now we speak\s+([^.]+)', text, re.IGNORECASE)
+        # Example: "Thanks! Setup is complete. Now we speak English, Russian, Japanese."
+        match = re.search(r'now we speak\s+([^.\n]+)', text, re.IGNORECASE)
         if not match:
-            return False
-
-        lang_string = match.group(1).strip()
+            # Fallback: try to extract from the entire message if it contains setup confirmation
+            # Look for pattern like "English, Russian" in the text
+            lang_match = re.search(r'([A-Z][a-z]+(?:,\s*[A-Z][a-z]+)*)', text)
+            if lang_match:
+                lang_string = lang_match.group(1).strip()
+            else:
+                return False
+        else:
+            lang_string = match.group(1).strip()
         
         # Remove any trailing text like "Send your message..."
         if '\n' in lang_string:
             lang_string = lang_string.split('\n')[0].strip()
+        if '.' in lang_string:
+            lang_string = lang_string.split('.')[0].strip()
         
         # Clean up the string
         lang_string = lang_string.strip('.,:; ')
@@ -128,7 +142,7 @@ def parse_and_persist_setup(chat_id, text, persist=True):
             return False
 
         # Split by common delimiters
-        parts = re.split(r'[,;]| and ', lang_string)
+        parts = re.split(r'[,;]|\s+and\s+', lang_string)
         names = [p.strip().strip('.,:; ') for p in parts if p and p.strip() and len(p.strip()) > 1]
 
         if not names:
@@ -258,14 +272,16 @@ def send_message_to_copilot(conversation_id, token, text, from_id="user"):
         'Authorization': f'Bearer {token}',
         'Content-Type': 'application/json'
     }
+    # Ensure unique from_id for each Telegram user to avoid conversation mixing
+    unique_from_id = f"telegram_user_{from_id}"
     payload = {
         "type": "message",
-        "from": {"id": str(from_id)},
+        "from": {"id": unique_from_id, "name": f"TelegramUser{from_id}"},
         "text": text
     }
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=10)
-        app.logger.info("DirectLine send activity status=%s convo=%s", response.status_code, conversation_id)
+        app.logger.info("DirectLine send activity status=%s convo=%s from_id=%s", response.status_code, conversation_id, unique_from_id)
         if response.status_code in (200, 201):
             try:
                 j = response.json()
@@ -302,6 +318,10 @@ def get_copilot_response(conversation_id, token, last_watermark, user_from_id="u
         except Exception:
             data = {}
         activities = data.get('activities', []) if isinstance(data, dict) else []
+        
+        # Create the expected user ID format
+        expected_user_id = f"telegram_user_{user_from_id}"
+        
         # Filter activities to only include actual messages from the bot with text content.
         # This avoids processing typing indicators or other non-message events.
         # TEMPORARY DEBUG: Log all activities to see what we're missing
@@ -313,13 +333,13 @@ def get_copilot_response(conversation_id, token, last_watermark, user_from_id="u
         bot_activities = [
             act for act in activities 
             if act.get('type') == 'message' and 
-               act.get('from', {}).get('id') != str(user_from_id) and 
+               act.get('from', {}).get('id') != expected_user_id and 
                act.get('text', '').strip()
         ]
         new_watermark = data.get('watermark', last_watermark)
         try:
             # Log a short, non-sensitive summary so operators can see activity volume.
-            app.logger.info("DL activities count=%d convo=%s", len(activities), conversation_id)
+            app.logger.info("DL activities count=%d bot_activities=%d convo=%s user_id=%s", len(activities), len(bot_activities), conversation_id, expected_user_id)
             # Log a small redacted sample when verbose debugging is explicitly enabled.
             if DEBUG_VERBOSE and isinstance(activities, list):
                 def _redact_activity(a):
@@ -372,10 +392,26 @@ def telegram_webhook():
     message = data['message']
     chat_id = message['chat']['id']
     user_from_id = message['from']['id']
+    chat_type = message['chat'].get('type', 'private')
     text = message.get('text', '').strip()
 
     if not text:
         return jsonify(success=True)
+
+    # For group chats, only respond to messages that start with bot commands or mention the bot
+    if chat_type in ['group', 'supergroup']:
+        # Get bot info to check for mentions
+        bot_username = None  # We could get this from getMe API call if needed
+        
+        # Only process if it's a command or if the bot is mentioned
+        if not (text.startswith('/') or (bot_username and f'@{bot_username}' in text)):
+            # In groups, ignore regular messages unless they're commands
+            app.logger.info("Ignoring non-command message in group chat %s", chat_id)
+            return jsonify(success=True)
+        
+        # Remove bot mention if present
+        if bot_username and f'@{bot_username}' in text:
+            text = text.replace(f'@{bot_username}', '').strip()
 
     # Fire-and-forget: send 'typing' action to Telegram ~1s after we receive the user's message.
     def _send_typing_after_delay(cid, delay_sec=1.0):
@@ -389,7 +425,7 @@ def telegram_webhook():
     t.daemon = True
     t.start()
 
-    app.logger.info("Processing text '%s' for chat_id %s", text, chat_id)
+    app.logger.info("Processing text '%s' for chat_id %s (type: %s, user: %s)", text, chat_id, chat_type, user_from_id)
     last_user_message[chat_id] = text
 
     # 2. Обработка команды /reset
@@ -444,20 +480,28 @@ def telegram_webhook():
             
             # КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Проверяем, есть ли уже настроенные языки в БД
             # Если есть - значит пользователь уже прошел настройку и отправляет сообщение для перевода
-            existing_settings = db.get_chat_settings(chat_id)
-            if existing_settings and existing_settings.get('language_names'):
-                app.logger.info("Found existing language settings for chat %s: %s. This is a translation request, not setup.", 
-                              chat_id, existing_settings.get('language_names'))
-                # Отправляем настройки в новый диалог перед отправкой сообщения пользователя
-                saved_languages = existing_settings.get('language_names', 'English, Russian, Korean')
-                setup_message = f"start\n{saved_languages}"  # Используем сохраненные языки
-                app.logger.info("Sending quick setup to new conversation for chat %s with languages: %s", chat_id, saved_languages)
-                send_message_to_copilot(conv_id, token, setup_message, from_id=user_from_id)
-                # Даем время Copilot обработать настройку
-                time.sleep(2.5)
+            try:
+                existing_settings = db.get_chat_settings(chat_id)
+                if existing_settings and existing_settings.get('language_names'):
+                    app.logger.info("Found existing language settings for chat %s: %s. This is a translation request, not setup.", 
+                                  chat_id, existing_settings.get('language_names'))
+                    # Отправляем настройки в новый диалог перед отправкой сообщения пользователя
+                    saved_languages = existing_settings.get('language_names', 'English, Russian, Korean')
+                    setup_message = f"start\n{saved_languages}"  # Используем сохраненные языки
+                    app.logger.info("Sending quick setup to new conversation for chat %s with languages: %s", chat_id, saved_languages)
+                    setup_activity_id = send_message_to_copilot(conv_id, token, setup_message, from_id=user_from_id)
+                    if setup_activity_id:
+                        recent_activity_ids[chat_id].append(setup_activity_id)
+                    # Даем время Copilot обработать настройку
+                    time.sleep(2.5)
+            except Exception as e:
+                app.logger.error("Error checking existing settings for chat %s: %s", chat_id, e, exc_info=True)
         else:
             app.logger.error("Failed to start DirectLine conversation for chat %s.", chat_id)
-            send_telegram_message(chat_id, "Извините, я не смог подключиться к сервису перевода. Пожалуйста, попробуйте еще раз позже.")
+            error_msg = "Извините, я не смог подключиться к сервису перевода. Пожалуйста, попробуйте еще раз позже."
+            if chat_type in ['group', 'supergroup']:
+                error_msg = "Sorry, I couldn't connect to the translation service. Please try again later."
+            send_telegram_message(chat_id, error_msg)
             return jsonify(success=False)
     
     # 5. Отправляем сообщение в Copilot и получаем ответ
@@ -472,7 +516,10 @@ def telegram_webhook():
     else:
         app.logger.warning("Не удалось отправить сообщение для чата %s. Предполагаем, что токен истек, начинаем новый разговор.", chat_id)
         conversations.pop(chat_id, None)
-        send_telegram_message(chat_id, "Произошла ошибка соединения. Пожалуйста, отправьте свое сообщение еще раз.")
+        error_msg = "Произошла ошибка соединения. Пожалуйста, отправьте свое сообщение еще раз."
+        if chat_type in ['group', 'supergroup']:
+            error_msg = "Connection error occurred. Please resend your message."
+        send_telegram_message(chat_id, error_msg)
         return jsonify(success=True)
 
     # 6. Ожидаем и обрабатываем ответ от Copilot

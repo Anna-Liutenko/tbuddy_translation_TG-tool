@@ -89,7 +89,6 @@ DB_PATH = os.path.join(os.path.dirname(__file__), 'chat_settings.db')
 # if DATABASE_URL is set. This centralizes DB access for easier future migration.
 import db
 
-
 def parse_and_persist_setup(chat_id, text, persist=True):
     """Try to extract language names from Copilot's setup confirmation and persist them.
 
@@ -105,27 +104,35 @@ def parse_and_persist_setup(chat_id, text, persist=True):
         if 'setup is complete' not in lowered and 'now we speak' not in lowered:
             return False
 
-        # Regex to find the language list after "Now we speak" or similar phrases.
-        # It captures the part between the introductory phrase and the closing sentence.
-        match = re.search(r'(?:now we speak|setup is complete\.|thanks!)\s*(.*?)\s*(?:\.|$)', text, re.IGNORECASE | re.DOTALL)
+        # Try to find languages after "Now we speak" pattern
+        # Example: "Now we speak English, Russian, Japanese."
+        match = re.search(r'now we speak\s+([^.]+)', text, re.IGNORECASE)
         if not match:
-            # Fallback for slightly different phrasing
-            match = re.search(r'now we speak\s(.*?)(?=\. Send your message)', text, re.IGNORECASE)
-            if not match:
-                return False
+            return False
 
         lang_string = match.group(1).strip()
-        # Further clean up just in case (e.g., remove trailing "Send your message...")
-        lang_string = re.sub(r'\s*\.?\s*send your message.*$', '', lang_string, re.IGNORECASE).strip()
-
+        
+        # Remove any trailing text like "Send your message..."
+        if '\n' in lang_string:
+            lang_string = lang_string.split('\n')[0].strip()
+        
+        # Clean up the string
+        lang_string = lang_string.strip('.,:; ')
+        
         if not lang_string:
             return False
 
+        # For cases like "No languages are mentioned..." - don't save
+        if 'no languages' in lang_string.lower():
+            app.logger.warning("Copilot reported no languages for chat %s: %s", chat_id, lang_string)
+            return False
+
         # Split by common delimiters
-        parts = re.split(r'[,;]| and | or ', lang_string)
+        parts = re.split(r'[,;]| and ', lang_string)
         names = [p.strip().strip('.,:; ') for p in parts if p and p.strip() and len(p.strip()) > 1]
 
         if not names:
+            app.logger.warning("Could not extract language names from: %s", lang_string)
             return False
 
         lang_names = ', '.join(names)
@@ -138,8 +145,7 @@ def parse_and_persist_setup(chat_id, text, persist=True):
     except Exception as e:
         app.logger.error("Error in parse_and_persist_setup for chat %s: %s", chat_id, e, exc_info=True)
         return False
-
-
+    
 db.init_db()
 
 def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_id, total_timeout=120.0, interval=1.0):

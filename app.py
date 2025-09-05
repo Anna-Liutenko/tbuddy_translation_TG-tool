@@ -377,6 +377,18 @@ def telegram_webhook():
     if not text:
         return jsonify(success=True)
 
+    # Fire-and-forget: send 'typing' action to Telegram ~1s after we receive the user's message.
+    def _send_typing_after_delay(cid, delay_sec=1.0):
+        try:
+            time.sleep(delay_sec)
+            send_telegram_typing_action(cid)
+        except Exception as e:
+            app.logger.debug("Typing-thread exception for chat %s: %s", cid, e)
+
+    t = threading.Thread(target=_send_typing_after_delay, args=(chat_id, 1.0))
+    t.daemon = True
+    t.start()
+
     app.logger.info("Processing text '%s' for chat_id %s", text, chat_id)
     last_user_message[chat_id] = text
 
@@ -589,6 +601,40 @@ def send_telegram_message(chat_id, text, reply_markup: dict = None):
             return False
     else:
         app.logger.error("Telegram send failed chat=%s status=%s body=%s", chat_id, response.status_code, resp_text[:1000])
+        return False
+
+
+def send_telegram_typing_action(chat_id):
+    """Send a `typing` action to Telegram for the given chat_id.
+
+    Best-effort: logs failures and returns boolean.
+    """
+    if DEBUG_LOCAL:
+        app.logger.info("DEBUG_LOCAL enabled — would send 'typing' action to chat %s", chat_id)
+        return True
+
+    bot_send_url = f"https://api.telegram.org/bot{TELEGRAM_API_TOKEN}/sendChatAction"
+    payload = {'chat_id': chat_id, 'action': 'typing'}
+    try:
+        response = requests.post(bot_send_url, json=payload, timeout=3)
+    except Exception as e:
+        app.logger.debug("Exception while sending 'typing' action for chat=%s: %s", chat_id, e)
+        return False
+
+    try:
+        if response.status_code == 200:
+            j = response.json()
+            if j.get('ok'):
+                app.logger.debug("Sent 'typing' action to chat %s", chat_id)
+                return True
+            else:
+                app.logger.debug("Telegram returned ok=false for 'typing' action chat %s: %s", chat_id, j)
+                return False
+        else:
+            app.logger.debug("Non-200 response when sending 'typing' for chat %s: %s %s", chat_id, response.status_code, (response.text or '')[:200])
+            return False
+    except Exception as e:
+        app.logger.debug("Failed to parse Telegram response for 'typing' action chat %s: %s", chat_id, e)
         return False
 
 

@@ -566,6 +566,69 @@ def health_check():
     return jsonify(status="ok", message="alive")
 
 
+@app.route('/status/github', methods=['GET'])
+def github_status():
+    """Get comprehensive GitHub repository status via API endpoint."""
+    try:
+        # Import here to avoid circular imports
+        from status_reporter import StatusReporter
+        
+        # Get optional parameters
+        repo_path = request.args.get('path', '.')
+        include_github = request.args.get('github', 'true').lower() == 'true'
+        format_type = request.args.get('format', 'json').lower()
+        
+        # Get GitHub token from request header or environment
+        github_token = request.headers.get('X-GitHub-Token') or os.getenv('GITHUB_TOKEN')
+        
+        # Initialize status reporter
+        reporter = StatusReporter(repo_path, github_token)
+        
+        # Generate comprehensive report
+        app.logger.info(f"GitHub status check requested for path: {repo_path}")
+        result = reporter.generate_comprehensive_report(include_github=include_github)
+        
+        if not result.success:
+            return jsonify({
+                'success': False,
+                'error': result.error_message,
+                'timestamp': datetime.utcnow().isoformat()
+            }), 400
+        
+        # Return different formats based on request
+        if format_type == 'summary':
+            return jsonify({
+                'success': True,
+                'summary': reporter.format_status_summary(result),
+                'timestamp': datetime.utcnow().isoformat()
+            })
+        elif format_type == 'table':
+            return jsonify({
+                'success': True,
+                'table': reporter.generate_table_format(result),
+                'timestamp': datetime.utcnow().isoformat()
+            })
+        elif format_type == 'actions':
+            actions = reporter.get_action_plan(result)
+            return jsonify({
+                'success': True,
+                'actions': actions,
+                'timestamp': datetime.utcnow().isoformat()
+            })
+        else:  # Default JSON format
+            response_data = result.to_dict()
+            response_data['timestamp'] = datetime.utcnow().isoformat()
+            return jsonify(response_data)
+            
+    except Exception as e:
+        app.logger.error(f"Error in GitHub status endpoint: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 500
+
+
 @app.route('/dump-settings', methods=['GET'])
 def dump_settings():
     """Return all rows from ChatSettings for quick inspection."""

@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.pyc
 .Python
 build/
 develop-eggs/
@@ -24,10 +25,11 @@ MANIFEST
 # Environment variables and secrets
 .env
 .env.*
+*.env
 !.env.example
 !.env.production.example
 !.env.enhanced.example
-!.env.testing
+!.env.testing.example
 *.pem
 *.key
 *.crt
@@ -50,6 +52,7 @@ Thumbs.db
 *.db
 *.sqlite
 *.sqlite3
+*.sqlite*
 chat_settings.db
 
 # Logs and runtime

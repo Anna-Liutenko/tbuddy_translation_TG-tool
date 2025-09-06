@@ -20,26 +20,30 @@ def test_parse_and_persist_setup():
     print("Testing parse_and_persist_setup function...")
     
     test_cases = [
-        # Expected to parse successfully
-        ("Thanks! Setup is complete. Now we speak English, Russian, Japanese.", True),
-        ("Setup is complete. Now we speak German, French.", True),
-        ("Thanks! Setup is complete. Now we speak Korean, Chinese, Spanish.\nSend your message and I'll translate it.", True),
+        # Expected to parse successfully (simulated Copilot responses)
+        ("Thanks! Setup is complete. Now we speak English, Russian, Japanese.", True, True),
+        ("Setup is complete. Now we speak German, French.", True, True),
+        ("Thanks! Setup is complete. Now we speak Korean, Chinese, Spanish.\nSend your message and I'll translate it.", True, True),
         
-        # Expected to fail parsing
-        ("What's languages you prefer? Write 2 or 3 languages.", False),
-        ("Hello, how are you?", False),
-        ("Send your message and I'll translate it.", False),
+        # Expected to fail parsing (user messages)
+        ("What's languages you prefer? Write 2 or 3 languages.", False, False),
+        ("Hello, how are you?", False, False),
+        ("Send your message and I'll translate it.", False, False),
+        
+        # User messages that could trigger false positives
+        ("멋져요! 정말 좋아요!", False, False),  # Korean text from dialog
+        ("I don't think so!", False, False),  # From dialog
     ]
     
     all_passed = True
     
-    for i, (text, expected) in enumerate(test_cases, 1):
+    for i, (text, expected, is_from_copilot) in enumerate(test_cases, 1):
         try:
-            result = app.parse_and_persist_setup(f"test_chat_{i}", text, persist=False)
+            result = app.parse_and_persist_setup(f"test_chat_{i}", text, persist=False, is_from_copilot=is_from_copilot)
             if result == expected:
-                print(f"✓ Test {i}: PASSED - '{text[:50]}...' -> {result}")
+                print(f"✓ Test {i}: PASSED - '{text[:50]}...' -> {result} (from_copilot={is_from_copilot})")
             else:
-                print(f"✗ Test {i}: FAILED - '{text[:50]}...' -> {result} (expected {expected})")
+                print(f"✗ Test {i}: FAILED - '{text[:50]}...' -> {result} (expected {expected}, from_copilot={is_from_copilot})")
                 all_passed = False
         except Exception as e:
             print(f"✗ Test {i}: ERROR - {e}")

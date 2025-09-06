@@ -1,0 +1,264 @@
+{
+  "timestamp": "2025-09-06T01:40:28.938890",
+  "repo_path": "C:\\Users\\annal\\Documents\\CopilotAgents\\tbuddy_translation_TG-tool",
+  "checks": {
+    "security_validation": {
+      "status": "FAILED",
+      "message": "Security validation completed",
+      "command_output": {
+        "success": false,
+        "returncode": 1,
+        "stdout": "\n============================================================\nSECURITY VALIDATION SUMMARY\n============================================================\nCritical Issues: 6\nHigh Issues: 0\nMedium Issues: 0\nWarnings: []\nTotal Issues: 6\n\nSTATUS: FAILED\n",
+        "stderr": "2025-09-06 01:40:29,006 - __main__ - INFO - Starting comprehensive security validation...\n2025-09-06 01:40:29,006 - __main__ - INFO - Validating .gitignore...\n2025-09-06 01:40:29,006 - __main__ - INFO - Validating environment templates...\n2025-09-06 01:40:29,008 - __main__ - INFO - Scanning repository for secrets...\n2025-09-06 01:40:29,214 - __main__ - INFO - Validating file permissions...\n2025-09-06 01:40:29,214 - __main__ - INFO - Checking for forbidden files...\n2025-09-06 01:40:29,420 - __main__ - INFO - Validating deployment scripts...\n2025-09-06 01:40:29,846 - __main__ - ERROR - SECURITY VALIDATION FAILED: 6 critical issues found\n2025-09-06 01:40:29,846 - __main__ - ERROR - CRITICAL: ENV_TEMPLATE - Template .env.example contains real secret: database_url at line 23\n2025-09-06 01:40:29,846 - __main__ - ERROR - CRITICAL: ENV_TEMPLATE - Template .env.production.example contains real secret: database_url at line 23\n2025-09-06 01:40:29,846 - __main__ - ERROR - CRITICAL: ENV_TEMPLATE - Template .env.testing contains real secret: database_url at line 19\n2025-09-06 01:40:29,846 - __main__ - ERROR - CRITICAL: ENV_TEMPLATE - Template .env.example contains real secret: database_url at line 23\n2025-09-06 01:40:29,847 - __main__ - ERROR - CRITICAL: ENV_TEMPLATE - Template .env.production.example contains real secret: database_url at line 23\n2025-09-06 01:40:29,847 - __main__ - ERROR - CRITICAL: ENV_TEMPLATE - Template .env.testing contains real secret: database_url at line 19\n2025-09-06 01:40:30,280 - __main__ - INFO - Security report saved to C:\\Users\\annal\\Documents\\CopilotAgents\\tbuddy_translation_TG-tool\\security_report.json\n"
+      },
+      "details": {
+        "timestamp": "unknown",
+        "repository_path": "C:\\Users\\annal\\Documents\\CopilotAgents\\tbuddy_translation_TG-tool",
+        "critical_issues": 6,
+        "high_issues": 0,
+        "medium_issues": 0,
+        "warnings": [],
+        "total_issues": 6,
+        "issues": [
+          {
+            "severity": "CRITICAL",
+            "category": "ENV_TEMPLATE",
+            "description": "Template .env.example contains real secret: database_url at line 23",
+            "file_path": null,
+            "line_number": null
+          },
+          {
+            "severity": "CRITICAL",
+            "category": "ENV_TEMPLATE",
+            "description": "Template .env.production.example contains real secret: database_url at line 23",
+            "file_path": null,
+            "line_number": null
+          },
+          {
+            "severity": "CRITICAL",
+            "category": "ENV_TEMPLATE",
+            "description": "Template .env.testing contains real secret: database_url at line 19",
+            "file_path": null,
+            "line_number": null
+          },
+          {
+            "severity": "CRITICAL",
+            "category": "ENV_TEMPLATE",
+            "description": "Template .env.example contains real secret: database_url at line 23",
+            "file_path": null,
+            "line_number": null
+          },
+          {
+            "severity": "CRITICAL",
+            "category": "ENV_TEMPLATE",
+            "description": "Template .env.production.example contains real secret: database_url at line 23",
+            "file_path": null,
+            "line_number": null
+          },
+          {
+            "severity": "CRITICAL",
+            "category": "ENV_TEMPLATE",
+            "description": "Template .env.testing contains real secret: database_url at line 19",
+            "file_path": null,
+            "line_number": null
+          },
+          {
+            "severity": "CRITICAL",
+            "category": "ENV_TEMPLATE",
+            "description": "Template .env.example contains real secret: database_url at line 23",
+            "file_path": null,
+            "line_number": null
+          },
+          {
+            "severity": "CRITICAL",
+            "category": "ENV_TEMPLATE",
+            "description": "Template .env.production.example contains real secret: database_url at line 23",
+            "file_path": null,
+            "line_number": null
+          },
+          {
+            "severity": "CRITICAL",
+            "category": "ENV_TEMPLATE",
+            "description": "Template .env.testing contains real secret: database_url at line 19",
+            "file_path": null,
+            "line_number": null
+          }
+        ],
+        "scan_summary": {
+          "gitignore_valid": true,
+          "templates_valid": false,
+          "no_secrets_found": true,
+          "permissions_secure": true,
+          "no_forbidden_files": true,
+          "deployment_secure": true
+        }
+      }
+    },
+    "git_hooks": {
+      "status": "FAILED",
+      "message": "Git hooks validation completed",
+      "details": {
+        "issues": [
+          "Pre-commit hook not installed"
+        ],
+        "security_hook_exists": true,
+        "pre_commit_hook_exists": false
+      }
+    },
+    "environment_templates": {
+      "status": "PASSED",
+      "message": "Environment templates validation completed (0 issues)",
+      "details": {
+        "issues": [],
+        "templates": {
+          ".env.example": {
+            "exists": true,
+            "has_required_vars": true,
+            "has_placeholders": true,
+            "missing_vars": []
+          },
+          ".env.production.example": {
+            "exists": true,
+            "has_required_vars": true,
+            "has_placeholders": true,
+            "missing_vars": []
+          },
+          ".env.enhanced.example": {
+            "exists": true,
+            "has_required_vars": true,
+            "has_placeholders": true,
+            "missing_vars": []
+          },
+          ".env.testing": {
+            "exists": true,
+            "has_required_vars": true,
+            "has_placeholders": true,
+            "missing_vars": []
+          }
+        }
+      }
+    },
+    "deployment_files": {
+      "status": "PASSED",
+      "message": "Deployment files validation completed (0 issues)",
+      "details": {
+        "issues": [],
+        "files": {
+          "deploy/tbuddy.service": {
+            "exists": true,
+            "size": 1659,
+            "executable": true
+          },
+          "deploy/tbuddy.nginx.conf": {
+            "exists": true,
+            "size": 993,
+            "executable": true
+          },
+          "deploy/secure_deploy.sh": {
+            "exists": true,
+            "size": 15529,
+            "executable": true
+          },
+          "scripts/health_check.sh": {
+            "exists": true,
+            "size": 15992,
+            "executable": true
+          },
+          "scripts/rollback.sh": {
+            "exists": true,
+            "size": 16320,
+            "executable": true
+          },
+          "scripts/monitor.sh": {
+            "exists": true,
+            "size": 20332,
+            "executable": true
+          }
+        }
+      }
+    },
+    "gitignore_validation": {
+      "status": "FAILED",
+      "message": ".gitignore validation completed (1 issues)",
+      "details": {
+        "issues": [
+          "Dangerous include patterns: !.env"
+        ],
+        "missing_patterns": [],
+        "dangerous_includes": [
+          "!.env"
+        ]
+      }
+    },
+    "documentation": {
+      "status": "PASSED",
+      "message": "Documentation validation completed (0 issues)",
+      "details": {
+        "issues": [],
+        "documents": {
+          "README.md": {
+            "exists": true,
+            "size": 3183,
+            "lines": 110,
+            "has_content": true
+          },
+          "DEPLOY.md": {
+            "exists": true,
+            "size": 4537,
+            "lines": 145,
+            "has_content": true
+          },
+          "ARCHITECTURE_COMPLIANCE_REPORT.md": {
+            "exists": true,
+            "size": 12462,
+            "lines": 387,
+            "has_content": true
+          },
+          "COMPLIANCE_VALIDATION_GUIDE.md": {
+            "exists": true,
+            "size": 7212,
+            "lines": 261,
+            "has_content": true
+          }
+        }
+      }
+    },
+    "test_framework": {
+      "status": "PASSED",
+      "message": "Test framework validation completed (0 issues)",
+      "details": {
+        "issues": [],
+        "test_files": {
+          "scripts/deployment_test.py": {
+            "exists": true,
+            "size": 30433,
+            "executable": true
+          },
+          "comprehensive_test_runner.py": {
+            "exists": true,
+            "size": 30505,
+            "executable": true
+          },
+          "test_utilities.py": {
+            "exists": true,
+            "size": 28295,
+            "executable": true
+          },
+          "tests_directory": {
+            "exists": true,
+            "test_count": 7
+          }
+        }
+      }
+    }
+  },
+  "overall_status": "FAILED",
+  "critical_issues": 0,
+  "high_issues": 0,
+  "medium_issues": 0,
+  "warnings": 0,
+  "total_checks": 7,
+  "passed_checks": 4,
+  "failed_checks": 3,
+  "total_issues": 11
+}

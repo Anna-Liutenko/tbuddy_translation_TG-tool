@@ -1,9 +1,17 @@
-# Python bytecode and cache
+# Enhanced .gitignore for tbuddy_translation_TG-tool
+# This file prevents common problematic files from being committed
+
+# ===========================
+# Python
+# ===========================
 __pycache__/
 *.py[cod]
 *$py.class
+
+# C extensions
 *.so
-*.pyc
+
+# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -17,113 +25,159 @@ parts/
 sdist/
 var/
 wheels/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 MANIFEST
 
-# Environment variables and secrets
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# pdm
+.pdm.toml
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# ===========================
+# Environment Variables
+# ===========================
 .env
-.env.*
-*.env
-!.env.example
-!.env.production.example
-!.env.enhanced.example
-!.env.testing.example
-*.pem
-*.key
-*.crt
-config.ini
-secrets.yaml
-credentials.json
-
-# Development environment
-.venv/
+.env.local
+.env.development
+.env.test
+.env.production
+.env.staging
+.venv
 venv/
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
+ENV/
+env/
+.env/
 
-# Database files
+# ===========================
+# Database Files
+# ===========================
 *.db
 *.sqlite
 *.sqlite3
-*.sqlite*
 chat_settings.db
+*.mdb
+*.accdb
 
-# Logs and runtime
+# ===========================
+# Log Files
+# ===========================
 *.log
-run.log
 logs/
-tmp/
-temp/
+run.log
+error.log
+debug.log
+access.log
+application.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Qoder IDE files (may contain sensitive data)
-.qoder/
-!.qoder/README.md
+# ===========================
+# Test Reports and Coverage
+# ===========================
+test_reports/
+test-results/
+coverage-reports/
+.nyc_output
+junit.xml
+*.junit.xml
+comprehensive_test_report_*.html
+comprehensive_test_report_*.json
+performance_report_*.json
+test_run_*.log
 
-# Additional security exclusions
-# Credentials and private keys
-*.ppk
-*.p12
-*.pfx
-*.keystore
-*.jks
+# ===========================
+# Security and Validation Reports
+# ===========================
+security_report.json
+security_validation_report.json
+validation_report*.json
+comprehensive_validation_report.json
 
-# Configuration files that may contain secrets
-config.json
-appconfig.json
-settings.json
-local.json
-production.json
-development.json
-
-# Terraform state and variables
-*.tfstate
-*.tfstate.*
-*.tfvars
-.terraform/
-
-# Docker secrets
-docker-compose.override.yml
-.dockerignore
-secrets/
-
-# CI/CD sensitive files
-.github/workflows/secrets.yml
-.circleci/config.local.yml
-.travis.yml.local
-
-# Application-specific sensitive files
-anna@*.txt
-email_config.txt
-*.bundle
-tbuddy-*.bundle
-
-# Backup and temporary files
+# ===========================
+# Temporary Files
+# ===========================
+*.tmp
+*.temp
+*~
+*.swp
+*.swo
 *.bak
 *.backup
-*.tmp
-
-# Deployment secrets and keys
-deploy/*.pem
-deploy/*.key
-deploy/secrets/
-
-# Local configuration overrides
-local_config.*
-override_*
-
-# Test artifacts
-.pytest_cache/
-.coverage
-.tox/
-
-# OS generated files
 .DS_Store
 .DS_Store?
 ._*
@@ -131,3 +185,195 @@ override_*
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# ===========================
+# IDE and Editor Files
+# ===========================
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+.atom/
+
+# ===========================
+# Node.js (if any JS tooling)
+# ===========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.yarn-integrity
+
+# ===========================
+# Operating System
+# ===========================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ===========================
+# Security and Credentials
+# ===========================
+*.pem
+*.key
+*.p12
+*.pfx
+.ssh/
+config.json
+secrets.json
+credentials.json
+service-account-file.json
+*.env.*
+auth.json
+
+# ===========================
+# Backups and Archives
+# ===========================
+*.zip
+*.rar
+*.7z
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+backup/
+backups/
+.git_backup_*
+
+# ===========================
+# Large Files and Media
+# ===========================
+# Images
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.webp
+*.ico
+
+# Videos
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.flv
+*.webm
+*.mkv
+
+# Audio
+*.mp3
+*.wav
+*.flac
+*.aac
+*.ogg
+*.wma
+
+# Documents
+*.pdf
+*.doc
+*.docx
+*.ppt
+*.pptx
+*.xls
+*.xlsx
+
+# ===========================
+# Development Tools
+# ===========================
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# ===========================
+# Project Specific
+# ===========================
+# Qoder IDE files
+.qoder/
+
+# Local testing files
+test_server_*.py
+local_test_*.py
+
+# Deployment artifacts
+deploy_*.log
+deployment_*.log
+
+# Email file that might contain sensitive info
+*.txt
+
+# ===========================
+# AI/ML Models and Data
+# ===========================
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+*.model
+*.weights
+*.bin
+data/
+datasets/
+models/
+
+# ===========================
+# Cache Directories
+# ===========================
+.cache/
+cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+__pycache__/
+
+# ===========================
+# Monitoring and Metrics
+# ===========================
+monitoring/
+metrics/
+stats/
+*.stats
+*.metrics
+# Auto-generated patterns to prevent problematic files
+*.pyc
+*.pyo
+*.pyd
+.venv/

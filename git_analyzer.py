@@ -331,6 +331,223 @@ class GitStatusAnalyzer:
                 error_message=str(e)
             )
     
+    def check_large_files(self, size_limit_mb: int = 50) -> List[Tuple[str, int]]:
+        """
+        Check for large files that might cause push issues.
+        
+        Args:
+            size_limit_mb: Size limit in megabytes
+            
+        Returns:
+            List of (file_path, size_in_mb) tuples for files exceeding limit
+        """
+        large_files = []
+        size_limit_bytes = size_limit_mb * 1024 * 1024
+        
+        try:
+            for root, dirs, files in os.walk(self.repo_path):
+                # Skip .git directory
+                if '.git' in dirs:
+                    dirs.remove('.git')
+                
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    try:
+                        if os.path.getsize(file_path) > size_limit_bytes:
+                            relative_path = os.path.relpath(file_path, self.repo_path)
+                            size_mb = os.path.getsize(file_path) / (1024 * 1024)
+                            large_files.append((relative_path, round(size_mb, 2)))
+                    except OSError:
+                        continue
+        except Exception as e:
+            self.logger.error(f"Error checking large files: {e}")
+        
+        return large_files
+    
+    def check_problematic_files(self) -> Dict[str, List[str]]:
+        """
+        Check for files that shouldn't be committed.
+        
+        Returns:
+            Dictionary with categories of problematic files
+        """
+        problematic = {
+            'cache_files': [],
+            'log_files': [],
+            'env_files': [],
+            'db_files': [],
+            'temp_files': []
+        }
+        
+        # Patterns for problematic files
+        patterns = {
+            'cache_files': ['__pycache__', '.pyc', '.pyo', '.pyd', 'node_modules', '.cache'],
+            'log_files': ['.log', 'logs/', 'run.log'],
+            'env_files': ['.env', '.env.local', '.env.production', '.env.staging'],
+            'db_files': ['.db', '.sqlite', '.sqlite3'],
+            'temp_files': ['.tmp', '.temp', '~', '.swp', '.swo']
+        }
+        
+        try:
+            # Check staged and untracked files
+            all_files = []
+            modified_files, staged_files, untracked_files, _ = self.get_uncommitted_changes()
+            all_files.extend(staged_files)
+            all_files.extend(untracked_files)
+            
+            for file_path in all_files:
+                for category, file_patterns in patterns.items():
+                    for pattern in file_patterns:
+                        if pattern in file_path:
+                            problematic[category].append(file_path)
+                            break
+        except Exception as e:
+            self.logger.error(f"Error checking problematic files: {e}")
+        
+        return problematic
+    
+    def diagnose_push_issues(self) -> Dict[str, Any]:
+        """
+        Comprehensive diagnosis of potential git push issues.
+        
+        Returns:
+            Dictionary containing all diagnostic information
+        """
+        diagnosis = {
+            'timestamp': datetime.now().isoformat(),
+            'repository_path': self.repo_path,
+            'issues': [],
+            'recommendations': [],
+            'large_files': [],
+            'problematic_files': {},
+            'remote_status': 'unknown',
+            'branch_status': {}
+        }
+        
+        try:
+            # Check if it's a git repository
+            if not self.check_is_git_repository():
+                diagnosis['issues'].append({
+                    'type': 'not_git_repo',
+                    'severity': 'critical',
+                    'message': 'Not a git repository',
+                    'solution': 'Initialize git repository with "git init"'
+                })
+                return diagnosis
+            
+            # Check remote connection
+            has_remote = self.check_remote_connection()
+            diagnosis['remote_status'] = 'connected' if has_remote else 'disconnected'
+            
+            if not has_remote:
+                diagnosis['issues'].append({
+                    'type': 'no_remote',
+                    'severity': 'high',
+                    'message': 'No remote repository connection',
+                    'solution': 'Add remote repository or check network connection'
+                })
+            
+            # Check for large files
+            large_files = self.check_large_files()
+            diagnosis['large_files'] = large_files
+            
+            if large_files:
+                diagnosis['issues'].append({
+                    'type': 'large_files',
+                    'severity': 'medium',
+                    'message': f'Found {len(large_files)} files larger than 50MB',
+                    'solution': 'Use Git LFS for large files or add to .gitignore',
+                    'files': large_files
+                })
+            
+            # Check for problematic files
+            problematic_files = self.check_problematic_files()
+            diagnosis['problematic_files'] = problematic_files
+            
+            for category, files in problematic_files.items():
+                if files:
+                    diagnosis['issues'].append({
+                        'type': f'problematic_{category}',
+                        'severity': 'medium',
+                        'message': f'Found {len(files)} {category.replace("_", " ")} that should not be committed',
+                        'solution': f'Add {category.replace("_", " ")} to .gitignore',
+                        'files': files
+                    })
+            
+            # Check branch status
+            branch_comparison = self.get_branch_comparison()
+            diagnosis['branch_status'] = branch_comparison
+            
+            if branch_comparison['behind'] > 0:
+                diagnosis['issues'].append({
+                    'type': 'behind_remote',
+                    'severity': 'high',
+                    'message': f'Local branch is {branch_comparison["behind"]} commits behind remote',
+                    'solution': 'Pull remote changes before pushing'
+                })
+            
+            if branch_comparison['ahead'] > 0 and branch_comparison['behind'] > 0:
+                diagnosis['issues'].append({
+                    'type': 'divergent_branches',
+                    'severity': 'high',
+                    'message': 'Local and remote branches have diverged',
+                    'solution': 'Rebase or merge remote changes before pushing'
+                })
+            
+            # Generate recommendations
+            diagnosis['recommendations'] = self._generate_recommendations(diagnosis)
+            
+        except Exception as e:
+            self.logger.error(f"Error during push issue diagnosis: {e}")
+            diagnosis['issues'].append({
+                'type': 'diagnosis_error',
+                'severity': 'critical',
+                'message': f'Error during diagnosis: {e}',
+                'solution': 'Check repository state manually'
+            })
+        
+        return diagnosis
+    
+    def _generate_recommendations(self, diagnosis: Dict[str, Any]) -> List[str]:
+        """
+        Generate actionable recommendations based on diagnosis.
+        
+        Args:
+            diagnosis: Diagnosis results
+            
+        Returns:
+            List of recommendation strings
+        """
+        recommendations = []
+        
+        # Sort issues by severity
+        issues = diagnosis.get('issues', [])
+        critical_issues = [i for i in issues if i['severity'] == 'critical']
+        high_issues = [i for i in issues if i['severity'] == 'high']
+        
+        if critical_issues:
+            recommendations.append("🔴 CRITICAL: Address critical issues first before attempting push")
+            for issue in critical_issues:
+                recommendations.append(f"   • {issue['solution']}")
+        
+        if high_issues:
+            recommendations.append("🟡 HIGH PRIORITY: Resolve these issues before pushing")
+            for issue in high_issues:
+                recommendations.append(f"   • {issue['solution']}")
+        
+        # Add specific file handling recommendations
+        if diagnosis.get('large_files'):
+            recommendations.append("📁 Large files detected - consider Git LFS or .gitignore")
+        
+        problematic = diagnosis.get('problematic_files', {})
+        if any(files for files in problematic.values()):
+            recommendations.append("🚫 Problematic files detected - create/update .gitignore")
+        
+        if not recommendations:
+            recommendations.append("✅ No major issues detected - repository appears ready for push")
+        
+        return recommendations
+    
     def execute_git_command(self, command: List[str]) -> Tuple[bool, str]:
         """
         Execute a git command and return result.

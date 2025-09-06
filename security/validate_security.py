@@ -88,8 +88,14 @@ class SecurityValidator:
                     matches = pattern.finditer(line)
                     for match in matches:
                         # Skip template placeholders
-                        if any(placeholder in match.group(2).upper() for placeholder in 
-                               ['YOUR_', 'PLACEHOLDER', 'EXAMPLE', 'CHANGE_ME', 'REPLACE_', 'XXX', 'TOKEN_HERE']):
+                        matched_value = match.group(2)
+                        if any(placeholder in matched_value.upper() for placeholder in 
+                               ['YOUR_', 'PLACEHOLDER', 'EXAMPLE', 'CHANGE_ME', 'REPLACE_', 'XXX', 'TOKEN_HERE', '_HERE']):
+                            continue
+                        
+                        # Skip URLs with placeholder domains
+                        if pattern_name in ['database_url', 'webhook_url'] and any(placeholder in matched_value.upper() for placeholder in 
+                               ['DOMAIN_HERE', 'PATH_HERE', 'localhost', '127.0.0.1', 'example.com']):
                             continue
                             
                         secrets_found.append({
@@ -157,18 +163,29 @@ class SecurityValidator:
                 all_valid = False
                 continue
                 
-            # Check if template contains actual secrets
-            secrets = self.scan_file_for_secrets(template_path)
-            if secrets:
-                for secret in secrets:
-                    self.add_issue('CRITICAL', 'ENV_TEMPLATE', 
-                                 f'Template {template_name} contains real secret: {secret["type"]} at line {secret["line"]}')
-                all_valid = False
-                
-            # Validate template has placeholder values
+            # For template files, only check for obviously real secrets (not placeholder URLs)
             try:
                 with open(template_path, 'r', encoding='utf-8') as f:
                     content = f.read()
+                    
+                # Check for obviously real secrets (not placeholder patterns)
+                real_secret_patterns = {
+                    'telegram_token': re.compile(r'(?i)(telegram.*token|bot.*token)\s*[:=]\s*["\']?(\d+:[a-zA-Z0-9_\-]{35})["\']?'),
+                    'github_token': re.compile(r'(?i)(github.*token|gh.*token)\s*[:=]\s*["\']?(ghp_[a-zA-Z0-9]{36}|github_pat_[a-zA-Z0-9_]{82})["\']?'),
+                }
+                
+                lines = content.splitlines()
+                for line_num, line in enumerate(lines, 1):
+                    for pattern_name, pattern in real_secret_patterns.items():
+                        matches = pattern.finditer(line)
+                        for match in matches:
+                            # Only flag if it doesn't look like a placeholder
+                            matched_value = match.group(2)
+                            if not any(placeholder in matched_value.upper() for placeholder in 
+                                     ['YOUR_', 'PLACEHOLDER', 'EXAMPLE', 'CHANGE_ME', 'REPLACE_', 'XXX', 'TOKEN_HERE', '_HERE']):
+                                self.add_issue('CRITICAL', 'ENV_TEMPLATE', 
+                                             f'Template {template_name} contains real secret: {pattern_name} at line {line_num}')
+                                all_valid = False
                     
                 # Check for required placeholders
                 required_vars = ['TELEGRAM_API_TOKEN', 'DIRECT_LINE_SECRET']

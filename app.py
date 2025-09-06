@@ -14,6 +14,13 @@ from collections import deque, defaultdict
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 
+# Import enhanced features
+from enhanced_features import (
+    OperationMode, MessageType, ResponseType, ConversationState,
+    MessageClassifier, ContextRestorer, StateManager, EnhancedLanguageParser,
+    migrate_legacy_conversation
+)
+
 # Загружаем переменные из файла .env
 load_dotenv()
 
@@ -74,6 +81,8 @@ app.logger.setLevel(LOG_LEVEL)
 # В реальном приложении лучше использовать базу данных (например, Redis или SQLite).
 # Ключ: ID чата в Telegram, Значение: ID диалога в Copilot Studio и токен.
 conversations = {}
+# Initialize enhanced state manager
+state_manager = StateManager(conversations)
 # Global dictionary to track active long polling tasks
 active_pollers = {}
 # store last user message per chat as a simple fallback
@@ -90,186 +99,234 @@ DB_PATH = os.path.join(os.path.dirname(__file__), 'chat_settings.db')
 # if DATABASE_URL is set. This centralizes DB access for easier future migration.
 import db
 
-def parse_and_persist_setup(chat_id, text, persist=True):
-    """Try to extract language names from Copilot's setup confirmation and persist them.
-
-    This version uses more robust patterns to detect setup completion messages from Copilot Studio.
-    Returns True if something was parsed, False otherwise.
+def parse_and_persist_setup(chat_id, text, persist=True, is_from_copilot=True):
+    """Enhanced setup parsing using the new EnhancedLanguageParser.
+    
+    This version uses the enhanced parsing logic to better detect setup completion
+    messages from Copilot Studio and extract language information.
+    
+    Args:
+        chat_id: The chat ID
+        text: The text to parse
+        persist: Whether to persist to database
+        is_from_copilot: Whether this message is confirmed to be from Copilot Studio
     """
     try:
-        if not isinstance(text, str):
+        if not isinstance(text, str) or not is_from_copilot:
+            app.logger.debug("Skipping parse_and_persist_setup for non-Copilot message: %s", text[:50])
             return False
 
-        # More robust check for final confirmation message
-        lowered = text.lower()
-        
-        # Check for the exact confirmation message format from Copilot Studio
-        # Based on the startLanguageSetupEvent.yaml structure
-        confirmation_patterns = [
-            'setup is complete',
-            'setup complete',
-            'now we speak',
-            'thanks! setup is complete',
-            'great! i can now translate',
-            'perfect! now i can help you with',
-            'excellent! i\'m ready to translate',
-            'ready for',
-            'configuration successful',
-            'send your message and i\'ll translate',  # From YAML: "Send your message and I'll translate it."
-            'send your message and i will translate',
-            'translate it'
-        ]
-        
-        is_setup_complete = any(pattern in lowered for pattern in confirmation_patterns)
-        
-        # If we don't see clear confirmation patterns, try to detect 
-        # the specific structure from Copilot Studio
-        if not is_setup_complete:
-            # Look for the pattern from startLanguageSetupEvent.yaml:
-            # "Thanks! Setup is complete. Now we speak {languages}. Send your message and I'll translate it."
-            if re.search(r'thanks.*setup.*complete.*now.*speak.*send.*message', lowered, re.DOTALL):
-                is_setup_complete = True
-            elif re.search(r'setup.*complete.*speak.*translate', lowered, re.DOTALL):
-                is_setup_complete = True
+        # Use enhanced language parser
+        is_setup_complete, language_names = EnhancedLanguageParser.parse_setup_confirmation(text)
         
         if not is_setup_complete:
+            app.logger.debug("No setup completion patterns found in: %s", text[:100])
             return False
-
-        # Extract languages using multiple patterns
-        lang_string = None
         
-        # Pattern 1: "Now we speak English, Russian, Japanese" (from YAML)
-        match = re.search(r'now we speak\s+([^.\n!?]+)', text, re.IGNORECASE)
-        if match:
-            lang_string = match.group(1).strip()
-        
-        # Pattern 2: "Thanks! Setup is complete. Now we speak {languages}."
-        if not lang_string:
-            match = re.search(r'thanks.*setup.*complete.*now we speak\s+([^.\n!?]+)', text, re.IGNORECASE | re.DOTALL)
-            if match:
-                lang_string = match.group(1).strip()
-        
-        # Pattern 3: "translate between English, Russian, Japanese"
-        if not lang_string:
-            match = re.search(r'translate\s+(?:between\s+)?([A-Z][a-z]+(?:,\s*[A-Z][a-z]+)+)', text, re.IGNORECASE)
-            if match:
-                lang_string = match.group(1).strip()
-        
-        # Pattern 4: "help you with English, French"
-        if not lang_string:
-            match = re.search(r'help you with\s+([A-Z][a-z]+(?:,\s*[A-Z][a-z]+)*)', text, re.IGNORECASE)
-            if match:
-                lang_string = match.group(1).strip()
-        
-        # Pattern 5: "ready to translate English, German, Spanish"
-        if not lang_string:
-            match = re.search(r'ready to translate\s+([A-Z][a-z]+(?:,\s*[A-Z][a-z]+)*)', text, re.IGNORECASE)
-            if match:
-                lang_string = match.group(1).strip()
-        
-        # Pattern 6: "Ready for English, Spanish, Portuguese translation"
-        if not lang_string:
-            match = re.search(r'ready for\s+([A-Z][a-z]+(?:,\s*[A-Z][a-z]+)*)\s+translation', text, re.IGNORECASE)
-            if match:
-                lang_string = match.group(1).strip()
-        
-        # Pattern 7: "Setup complete! Ready for [languages]"
-        if not lang_string:
-            match = re.search(r'setup complete.*?ready for\s+([A-Z][a-z]+(?:,\s*[A-Z][a-z]+)*)', text, re.IGNORECASE | re.DOTALL)
-            if match:
-                lang_string = match.group(1).strip()
-        
-        # Pattern 8: Look for language list after confirmation words (more flexible)
-        if not lang_string:
-            # Look for pattern after confirmation keywords
-            confirmation_match = re.search(r'(setup is complete|setup complete|thanks!|great!|perfect!|excellent!|ready for).*?([A-Z][a-z]+(?:,\s*[A-Z][a-z]+)+)', text, re.IGNORECASE | re.DOTALL)
-            if confirmation_match:
-                lang_string = confirmation_match.group(2).strip()
-        
-        # Pattern 9: Look for any sequence of capitalized words separated by commas
-        if not lang_string:
-            lang_match = re.search(r'\b([A-Z][a-z]+(?:,\s*[A-Z][a-z]+)+)\b', text)
-            if lang_match:
-                potential_langs = lang_match.group(1)
-                # Verify these look like language names (not random capitalized words)
-                words = [w.strip() for w in potential_langs.split(',')]
-                if not any(word.lower() in ['send', 'your', 'message', 'text', 'thanks', 'great', 'now', 'can', 'help', 'ready'] 
-                          for word in words):
-                    lang_string = potential_langs
-        
-        # Pattern 10: Fallback - if we confirmed setup completion but no languages,
-        # check if this is a valid completion anyway (might mean default languages)
-        if not lang_string and is_setup_complete:
-            app.logger.info("Setup completion detected for chat %s but no specific languages found: %s", chat_id, text)
-            # Try to get existing settings or use a default indication
-            existing_settings = None
+        if not language_names:
+            app.logger.warning("Setup completion detected but no language names found: %s", text)
+            # Use existing settings if available or default completion
             try:
                 existing_settings = db.get_chat_settings(chat_id)
+                if existing_settings and existing_settings.get('language_names'):
+                    language_names = existing_settings['language_names']
+                else:
+                    language_names = "Configuration Completed"
             except Exception:
-                pass
-            
-            if existing_settings and existing_settings.get('language_names'):
-                # Use existing language names if available
-                lang_string = existing_settings['language_names']
-                app.logger.info("Using existing language settings for chat %s: %s", chat_id, lang_string)
-            else:
-                # Default fallback - this indicates setup was completed successfully
-                lang_string = "Configuration Completed"
-                app.logger.info("Setup completed for chat %s with default configuration", chat_id)
-        
-        if not lang_string:
-            app.logger.warning("Could not extract language names from setup confirmation: %s", text)
-            return False
-        
-        # Clean up the string if it contains actual language names
-        if lang_string != "Configuration Completed":
-            lang_string = re.sub(r'[.!?].*$', '', lang_string).strip()  # Remove trailing punctuation and text
-            lang_string = lang_string.strip('.,:; ')
-            
-            if not lang_string:
-                return False
-
-            # For cases like "No languages are mentioned..." - don't save
-            if 'no languages' in lang_string.lower():
-                app.logger.warning("Copilot reported no languages for chat %s: %s", chat_id, lang_string)
-                return False
-
-            # Split by common delimiters
-            parts = re.split(r'[,;]|\s+and\s+', lang_string)
-            names = [p.strip().strip('.,:; ') for p in parts if p and p.strip() and len(p.strip()) > 1]
-
-            if not names:
-                app.logger.warning("Could not extract language names from: %s", lang_string)
-                return False
-
-            # Filter out common non-language words
-            language_names = []
-            excluded_words = {'send', 'your', 'message', 'text', 'now', 'can', 'help', 'ready', 'translate', 'between', 'with'}
-            for name in names:
-                clean_name = name.strip()
-                if len(clean_name) > 1 and clean_name.lower() not in excluded_words:
-                    language_names.append(clean_name)
-            
-            if not language_names:
-                app.logger.warning("No valid language names found after filtering: %s", names)
-                return False
-
-            lang_names = ', '.join(language_names)
-        else:
-            # Use the default completion indicator
-            lang_names = lang_string
+                language_names = "Configuration Completed"
         
         if persist:
-            app.logger.info("SUCCESS: Parsed and persisting language names for chat %s: [%s]", chat_id, lang_names)
-            db.upsert_chat_settings(chat_id, '', lang_names, datetime.utcnow().isoformat())
-            # Mark setup as complete in conversation state
-            if chat_id in conversations:
-                conversations[chat_id]['setup_complete'] = True
+            app.logger.info("SUCCESS: Parsed and persisting language names for chat %s: [%s]", chat_id, language_names)
+            db.upsert_chat_settings(chat_id, '', language_names, datetime.utcnow().isoformat())
+            
+            # Update conversation state using state manager
+            state_manager.mark_setup_complete(chat_id)
         
-        return True # Return True if parsing was successful
+        return True
     except Exception as e:
-        app.logger.error("Error in parse_and_persist_setup for chat %s: %s", chat_id, e, exc_info=True)
+        app.logger.error("Error in enhanced parse_and_persist_setup for chat %s: %s", chat_id, e, exc_info=True)
         return False
+
+
+def handle_initial_setup(chat_id, user_from_id):
+    """Handle /start command - initial setup mode"""
+    app.logger.info("Handling initial setup for chat %s", chat_id)
+    
+    # Stop any active polling
+    active_pollers[chat_id] = False
+    
+    # Clear all state
+    state_manager.clear_conversation_state(chat_id)
+    last_user_message.pop(chat_id, None)
+    if chat_id in recent_activity_ids:
+        del recent_activity_ids[chat_id]
+    
+    # Start new conversation in setup mode
+    conv_id, token = start_direct_line_conversation()
+    if conv_id and token:
+        state = state_manager.create_conversation_state(
+            chat_id, conv_id, token, 
+            mode=OperationMode.INITIAL_SETUP,
+            user_from_id=user_from_id
+        )
+        state_manager.update_conversation_state(chat_id, awaiting_setup_confirmation=True)
+        return conv_id, token
+    
+    return None, None
+
+
+def handle_reset_setup(chat_id, user_from_id):
+    """Handle /reset command - reset mode"""
+    app.logger.info("Handling reset setup for chat %s", chat_id)
+    
+    # Stop any active polling
+    active_pollers[chat_id] = False
+    
+    # Clear database settings
+    try:
+        db.delete_chat_settings(chat_id)
+        app.logger.info("Deleted DB settings for chat %s", chat_id)
+    except Exception as e:
+        app.logger.error("Error deleting DB settings for chat %s: %s", chat_id, e, exc_info=True)
+    
+    # Clear conversation state
+    state_manager.clear_conversation_state(chat_id)
+    last_user_message.pop(chat_id, None)
+    if chat_id in recent_activity_ids:
+        del recent_activity_ids[chat_id]
+    
+    # Start new conversation in setup mode
+    conv_id, token = start_direct_line_conversation()
+    if conv_id and token:
+        state = state_manager.create_conversation_state(
+            chat_id, conv_id, token,
+            mode=OperationMode.INITIAL_SETUP,
+            user_from_id=user_from_id
+        )
+        state_manager.update_conversation_state(chat_id, awaiting_setup_confirmation=True)
+        
+        return conv_id, token
+    
+    return None, None
+
+
+def handle_translation_request(chat_id, user_from_id, message):
+    """Handle regular translation message"""
+    app.logger.info("Handling translation request for chat %s: %s", chat_id, message[:50])
+    
+    # Check if we need context restoration
+    restoration_needed, saved_languages = ContextRestorer.is_restoration_needed(chat_id, conversations, db)
+    
+    if restoration_needed and saved_languages:
+        app.logger.info("Context restoration needed for chat %s with languages: %s", chat_id, saved_languages)
+        
+        # Create new conversation if needed
+        conv_id, token = get_or_create_conversation(chat_id, user_from_id)
+        if not conv_id or not token:
+            return None, None
+        
+        # Send simplified context restoration message
+        restore_message = ContextRestorer.create_restore_message(saved_languages)
+        restore_activity_id = send_message_to_copilot(conv_id, token, restore_message, from_id=user_from_id)
+        if restore_activity_id:
+            recent_activity_ids[chat_id].append(restore_activity_id)
+        
+        # Wait for response and process setup confirmation
+        time.sleep(2.0)
+        
+        # Check for setup confirmation from the "My languages are:" message
+        responses, new_watermark = get_copilot_response(conv_id, token, None, user_from_id)
+        if new_watermark:
+            state_manager.update_conversation_state(chat_id, watermark=new_watermark)
+        
+        context_restored = False
+        if responses:
+            for response in responses:
+                response_text = response.get('text', '').strip()
+                if response_text:
+                    response_type = MessageClassifier.classify_copilot_response(response_text)
+                    if response_type == ResponseType.SETUP_CONFIRMATION:
+                        # Parse and save the setup confirmation
+                        if parse_and_persist_setup(chat_id, response_text, persist=True, is_from_copilot=True):
+                            state_manager.mark_context_restored(chat_id)
+                            context_restored = True
+                            app.logger.info("Context successfully restored for chat %s", chat_id)
+                            break
+        
+        if not context_restored:
+            # Fallback: mark as restored since we have existing settings
+            state_manager.mark_context_restored(chat_id)
+            app.logger.info("Context restoration fallback for chat %s", chat_id)
+    
+    # Get conversation details
+    state = state_manager.get_conversation_state(chat_id)
+    if not state:
+        # Create new conversation
+        conv_id, token = get_or_create_conversation(chat_id, user_from_id)
+        if not conv_id or not token:
+            return None, None
+        state = state_manager.get_conversation_state(chat_id)
+    
+    return state.id, state.token
+
+
+def get_or_create_conversation(chat_id, user_from_id):
+    """Get existing conversation or create new one"""
+    state = state_manager.get_conversation_state(chat_id)
+    
+    if state and state.id and state.token:
+        app.logger.info("Using existing conversation for chat %s", chat_id)
+        return state.id, state.token
+    
+    # Create new conversation
+    app.logger.info("Creating new conversation for chat %s", chat_id)
+    conv_id, token = start_direct_line_conversation()
+    
+    if conv_id and token:
+        state_manager.create_conversation_state(
+            chat_id, conv_id, token,
+            mode=OperationMode.TRANSLATION,
+            user_from_id=user_from_id
+        )
+        return conv_id, token
+    
+    return None, None
+
+
+def process_copilot_response(chat_id, activity, user_from_id):
+    """Process individual Copilot response with enhanced classification"""
+    bot_text = activity.get('text', '').strip()
+    if not bot_text:
+        return
+    
+    # Classify the response
+    response_type = MessageClassifier.classify_copilot_response(bot_text)
+    app.logger.info("Classified response for chat %s as: %s", chat_id, response_type.value)
+    
+    # Handle based on response type
+    if response_type == ResponseType.SETUP_PROMPT:
+        # Forward setup prompt to user
+        app.logger.info("Forwarding setup prompt to chat %s: '%s'", chat_id, bot_text)
+        send_telegram_message(chat_id, bot_text)
+        
+    elif response_type == ResponseType.SETUP_CONFIRMATION:
+        # Process setup completion
+        if parse_and_persist_setup(chat_id, bot_text, persist=True, is_from_copilot=True):
+            app.logger.info("Setup confirmation processed for chat %s", chat_id)
+            state_manager.mark_setup_complete(chat_id)
+        
+        # Forward confirmation to user
+        send_telegram_message(chat_id, bot_text)
+        
+    elif response_type == ResponseType.TRANSLATION_OUTPUT:
+        # Forward translation to user
+        app.logger.info("Forwarding translation to chat %s: '%s'", chat_id, bot_text)
+        send_telegram_message(chat_id, bot_text)
+        
+    else:
+        # Unknown response type - forward to user (this includes any other responses)
+        app.logger.info("Forwarding response to chat %s: '%s'", chat_id, bot_text)
+        send_telegram_message(chat_id, bot_text)
     
 db.init_db()
 
@@ -277,7 +334,7 @@ def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_i
     """Background poller to catch delayed bot replies arriving after the immediate poll window.
 
     This will poll activities until a bot response is found or total_timeout expires.
-    It updates the conversations[chat_id]['watermark'] when it finds new watermark.
+    It updates the conversation watermark when it finds new watermark.
     """
     import time
     try:
@@ -296,26 +353,21 @@ def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_i
             if activities:
                 # update watermark
                 try:
-                    conversations[chat_id]['watermark'] = new_nw
+                    state_manager.update_conversation_state(chat_id, watermark=new_nw)
                 except Exception:
                     pass
+                    
                 # forward each activity if not seen before
                 for act in activities:
                     act_id = act.get('id')
-                    text = act.get('text', '').strip()
-                    if not act_id or not text:
+                    if not act_id:
                         continue
                     if act_id in recent_activity_ids[chat_id]:
                         continue
                     recent_activity_ids[chat_id].append(act_id)
 
-                    # Try to parse and confirm setup
-                    if parse_and_persist_setup(chat_id, text, persist=True):
-                        app.logger.info("Setup confirmation detected and saved (long-poll) for chat %s.", chat_id)
-
-                    # Always forward the original message from the bot to the user
-                    app.logger.info("Forwarding bot message to chat (long-poll) %s: '%s'", chat_id, text)
-                    send_telegram_message(chat_id, text)
+                    # Use enhanced response processing
+                    process_copilot_response(chat_id, act, user_from_id)
 
                 app.logger.info("Long-poller обработал %d активностей для чата=%s", len(activities), chat_id)
                 break
@@ -327,8 +379,7 @@ def long_poll_for_activity(conv_id, token, user_from_id, start_watermark, chat_i
         # clear polling flags
         active_pollers.pop(chat_id, None)
         try:
-            if chat_id in conversations:
-                conversations[chat_id]['is_polling'] = False
+            state_manager.update_conversation_state(chat_id, is_polling=False)
         except Exception:
             pass
 
@@ -542,219 +593,75 @@ def telegram_webhook():
     app.logger.info("Processing text '%s' for chat_id %s (type: %s, user: %s)", text, chat_id, chat_type, user_from_id)
     last_user_message[chat_id] = text
 
-    # 2. Обработка команды /reset
-    if text == '/reset':
-        app.logger.info("Processing /reset for chat %s. Clearing all state.", chat_id)
-        
-        # Stop any active long polling for this chat
-        active_pollers[chat_id] = False
-        
-        try:
-            db.delete_chat_settings(chat_id)
-            app.logger.info("Deleted DB settings for chat %s", chat_id)
-        except Exception as e:
-            app.logger.error("Error deleting DB settings for chat %s: %s", chat_id, e, exc_info=True)
-        
-        # Очищаем состояние в памяти
-        conversations.pop(chat_id, None)
-        last_user_message.pop(chat_id, None)
-        if chat_id in recent_activity_ids:
-            del recent_activity_ids[chat_id]
-        app.logger.info("Cleared in-memory state for chat %s", chat_id)
-        
-        # Запускаем логику настройки, как при /start
-        text = 'start'
+    # Enhanced message classification
+    message_type = MessageClassifier.classify_incoming_message(text)
+    app.logger.info("Classified message for chat %s as: %s", chat_id, message_type.value)
 
-    # 3. Обработка команды /start
-    if text == '/start':
-        text = 'start' # Убедимся, что текст именно 'start'
-        if chat_id in conversations:
-            app.logger.info("Clearing stale in-memory conversation for chat %s due to /start", chat_id)
-            # Stop any active long polling for this chat
-            active_pollers[chat_id] = False
-            conversations.pop(chat_id, None)
-
-    # 4. Получаем или создаем диалог с Copilot Studio
-    need_new_conversation = False
-    if chat_id not in conversations:
-        need_new_conversation = True
-        app.logger.info("No active conversation for chat %s. Starting a new one.", chat_id)
-    else:
-        # Check if existing conversation is still valid by trying to use it
-        # If the token expired, we'll create a new one when send fails
-        app.logger.info("Using existing conversation for chat %s", chat_id)
+    # Handle different message types
+    conv_id = None
+    token = None
     
-    if need_new_conversation:
-        # Stop any leftover long polling for this chat
-        active_pollers[chat_id] = False
-        
-        conv_id, token = start_direct_line_conversation()
+    if message_type == MessageType.START_COMMAND:
+        conv_id, token = handle_initial_setup(chat_id, user_from_id)
         if conv_id and token:
-            conversations[chat_id] = {
-                'id': conv_id,
-                'token': token,
-                'watermark': None,
-                'last_interaction': time.time(),
-                'is_polling': False,
-                'setup_complete': False  # Track setup completion state
-            }
-            app.logger.info("Started new DirectLine conversation for chat %s: %s", chat_id, conv_id)
-            
-            # Check if user has existing language settings
-            existing_settings = None
-            try:
-                existing_settings = db.get_chat_settings(chat_id)
-            except Exception as e:
-                app.logger.error("Error checking existing settings for chat %s: %s", chat_id, e, exc_info=True)
-            
-            # Handle existing language settings for non-start messages
-            if existing_settings and existing_settings.get('language_names') and text != 'start':
-                saved_languages = existing_settings.get('language_names', '')
-                if saved_languages and saved_languages != "Configuration Completed":
-                    app.logger.info("Found existing language settings for chat %s: %s. Sending quick setup.", 
-                                  chat_id, saved_languages)
-                    # Send a simplified setup message to initialize the conversation
-                    setup_message = f"My languages are: {saved_languages}"
-                    app.logger.info("Sending quick setup to new conversation for chat %s: %s", chat_id, setup_message)
-                    setup_activity_id = send_message_to_copilot(conv_id, token, setup_message, from_id=user_from_id)
-                    if setup_activity_id:
-                        recent_activity_ids[chat_id].append(setup_activity_id)
-                    
-                    # Wait for Copilot to process the setup and respond
-                    app.logger.info("Waiting for Copilot to confirm setup for chat %s", chat_id)
-                    time.sleep(2.0)  # Give more time for setup processing
-                    
-                    # Check for setup confirmation
-                    setup_responses, new_watermark = get_copilot_response(conv_id, token, None, user_from_id)
-                    if new_watermark:
-                        conversations[chat_id]['watermark'] = new_watermark
-                    
-                    setup_confirmed = False
-                    if setup_responses:
-                        for response in setup_responses:
-                            response_text = response.get('text', '').strip()
-                            if response_text:
-                                app.logger.info("Setup response from Copilot for chat %s: %s", chat_id, response_text)
-                                # Try to parse and confirm setup
-                                if parse_and_persist_setup(chat_id, response_text, persist=True):
-                                    setup_confirmed = True
-                                    conversations[chat_id]['setup_complete'] = True
-                                    app.logger.info("Setup confirmed for chat %s via quick setup", chat_id)
-                                    break
-                    
-                    if not setup_confirmed:
-                        # Fallback: mark as complete since we have existing settings
-                        app.logger.info("Setup not explicitly confirmed but using existing settings for chat %s", chat_id)
-                        conversations[chat_id]['setup_complete'] = True
-                        # Save the confirmation in the database
-                        db.upsert_chat_settings(chat_id, '', saved_languages, datetime.utcnow().isoformat())
-                elif saved_languages == "Configuration Completed":
-                    # Previous setup was completed but without specific language names
-                    conversations[chat_id]['setup_complete'] = True
-                    app.logger.info("Using previous completed setup for chat %s", chat_id)
-        else:
-            app.logger.error("Failed to start DirectLine conversation for chat %s.", chat_id)
-            error_msg = "Sorry, I couldn't connect to the translation service. Please try again later."
-            if chat_type in ['group', 'supergroup']:
-                error_msg = "Sorry, I couldn't connect to the translation service. Please try again later."
-            else:
-                error_msg = "Извините, я не смог подключиться к сервису перевода. Пожалуйста, попробуйте еще раз позже."
-            send_telegram_message(chat_id, error_msg)
-            return jsonify(success=False)
-    
-    # 5. Отправляем сообщение в Copilot и получаем ответ
-    conv_id = conversations[chat_id]['id']
-    token = conversations[chat_id]['token']
-    last_watermark = conversations[chat_id]['watermark']
-    conversations[chat_id]['last_interaction'] = time.time()
-
-    activity_id = send_message_to_copilot(conv_id, token, text, from_id=user_from_id)
-    if activity_id:
-        recent_activity_ids[chat_id].append(activity_id)
-    else:
-        app.logger.warning("Failed to send message for chat %s. Assuming token expired, starting new conversation.", chat_id)
-        # Clear the conversation and try to create a new one
-        conversations.pop(chat_id, None)
-        # Attempt to retry with a new conversation
-        app.logger.info("Attempting to create new conversation after token failure for chat %s", chat_id)
+            # Send 'start' message to trigger setup
+            activity_id = send_message_to_copilot(conv_id, token, 'start', from_id=user_from_id)
+            if activity_id:
+                recent_activity_ids[chat_id].append(activity_id)
         
-        conv_id, token = start_direct_line_conversation()
+    elif message_type == MessageType.RESET_COMMAND:
+        conv_id, token = handle_reset_setup(chat_id, user_from_id)
         if conv_id and token:
-            conversations[chat_id] = {
-                'id': conv_id,
-                'token': token,
-                'watermark': None,
-                'last_interaction': time.time(),
-                'is_polling': False,
-                'setup_complete': False
-            }
-            
-            # For existing users, send quick setup again but with proper confirmation handling
-            try:
-                existing_settings = db.get_chat_settings(chat_id)
-                if existing_settings and existing_settings.get('language_names') and text != 'start':
-                    saved_languages = existing_settings.get('language_names', '')
-                    if saved_languages and saved_languages != "Configuration Completed":
-                        setup_message = f"My languages are: {saved_languages}"
-                        setup_activity_id = send_message_to_copilot(conv_id, token, setup_message, from_id=user_from_id)
-                        if setup_activity_id:
-                            recent_activity_ids[chat_id].append(setup_activity_id)
-                        
-                        # Wait for setup confirmation
-                        time.sleep(2.0)
-                        setup_responses, watermark = get_copilot_response(conv_id, token, None, user_from_id)
-                        if watermark:
-                            conversations[chat_id]['watermark'] = watermark
-                        
-                        setup_confirmed = False
-                        if setup_responses:
-                            for response in setup_responses:
-                                response_text = response.get('text', '').strip()
-                                if response_text and parse_and_persist_setup(chat_id, response_text, persist=True):
-                                    setup_confirmed = True
-                                    conversations[chat_id]['setup_complete'] = True
-                                    break
-                        
-                        if not setup_confirmed:
-                            conversations[chat_id]['setup_complete'] = True
-                            app.logger.info("Using fallback setup completion for retry in chat %s", chat_id)
-                    elif saved_languages == "Configuration Completed":
-                        conversations[chat_id]['setup_complete'] = True
-            except Exception as e:
-                app.logger.error("Error in retry setup for chat %s: %s", chat_id, e)
-            
-            # Retry sending the original message
+            # Send 'start' message to trigger fresh setup
+            activity_id = send_message_to_copilot(conv_id, token, 'start', from_id=user_from_id)
+            if activity_id:
+                recent_activity_ids[chat_id].append(activity_id)
+        
+    elif message_type == MessageType.REGULAR_TEXT:
+        conv_id, token = handle_translation_request(chat_id, user_from_id, text)
+        if conv_id and token:
+            # Send the actual message for translation
             activity_id = send_message_to_copilot(conv_id, token, text, from_id=user_from_id)
             if activity_id:
                 recent_activity_ids[chat_id].append(activity_id)
-            else:
-                error_msg = "Connection error occurred. Please resend your message."
-                if chat_type in ['group', 'supergroup']:
-                    error_msg = "Connection error occurred. Please resend your message."
-                else:
-                    error_msg = "Произошла ошибка соединения. Пожалуйста, отправьте свое сообщение еще раз."
-                send_telegram_message(chat_id, error_msg)
-                return jsonify(success=True)
+    
+    else:  # OTHER_COMMAND
+        # For other commands, treat as regular text
+        conv_id, token = handle_translation_request(chat_id, user_from_id, text)
+        if conv_id and token:
+            activity_id = send_message_to_copilot(conv_id, token, text, from_id=user_from_id)
+            if activity_id:
+                recent_activity_ids[chat_id].append(activity_id)
+
+    # Handle connection failures
+    if not conv_id or not token:
+        error_msg = "Sorry, I couldn't connect to the translation service. Please try again later."
+        if chat_type in ['group', 'supergroup']:
+            error_msg = "Sorry, I couldn't connect to the translation service. Please try again later."
         else:
-            error_msg = "Connection error occurred. Please resend your message."
-            if chat_type in ['group', 'supergroup']:
-                error_msg = "Connection error occurred. Please resend your message."
-            else:
-                error_msg = "Произошла ошибка соединения. Пожалуйста, отправьте свое сообщение еще раз."
-            send_telegram_message(chat_id, error_msg)
-            return jsonify(success=True)
+            error_msg = "Извините, я не смог подключиться к сервису перевода. Пожалуйста, попробуйте еще раз позже."
+        send_telegram_message(chat_id, error_msg)
+        return jsonify(success=False)
+
+    # Update conversation state
+    state_manager.update_conversation_state(chat_id, last_interaction=time.time())
 
     # 6. Ожидаем и обрабатываем ответ от Copilot
     time.sleep(1.2)
     
+    # Get current conversation state for watermark
+    current_state = state_manager.get_conversation_state(chat_id)
+    last_watermark = current_state.watermark if current_state else None
+    
     bot_responses, new_watermark = get_copilot_response(conv_id, token, last_watermark, user_from_id)
     if new_watermark:
-        conversations[chat_id]['watermark'] = new_watermark
+        state_manager.update_conversation_state(chat_id, watermark=new_watermark)
 
     if not bot_responses:
         app.logger.info("No immediate response from bot for chat %s. Starting long polling.", chat_id)
-        if not conversations[chat_id].get('is_polling'):
-            conversations[chat_id]['is_polling'] = True
+        current_state = state_manager.get_conversation_state(chat_id)
+        if not current_state or not current_state.is_polling:
+            state_manager.update_conversation_state(chat_id, is_polling=True)
             poller_thread = threading.Thread(
                 target=long_poll_for_activity,
                 args=(conv_id, token, user_from_id, new_watermark or last_watermark, chat_id)
@@ -770,17 +677,9 @@ def telegram_webhook():
                 continue
             
             recent_activity_ids[chat_id].append(activity_id)
-            bot_text = activity.get('text', '').strip()
-            if not bot_text:
-                continue
-
-            # Try to parse and confirm setup
-            if parse_and_persist_setup(chat_id, bot_text, persist=True):
-                app.logger.info("Setup confirmation detected and saved (immediate response) for chat %s.", chat_id)
-
-            # Always forward the original message from the bot to the user
-            app.logger.info("Forwarding bot message to chat %s: '%s'", chat_id, bot_text)
-            send_telegram_message(chat_id, bot_text)
+            
+            # Use enhanced response processing
+            process_copilot_response(chat_id, activity, user_from_id)
 
     return jsonify(success=True)
 @app.route('/health', methods=['GET'])

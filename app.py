@@ -103,34 +103,71 @@ def parse_and_persist_setup(chat_id, text, persist=True):
         lowered = text.lower()
         
         # Check for the exact confirmation message format from Copilot Studio
-        # "Thanks! Setup is complete. Now we speak {languages}."
-        is_setup_complete = ('setup is complete' in lowered and 'now we speak' in lowered) or \
-                           ('thanks!' in lowered and 'setup is complete' in lowered)
+        # Look for various confirmation patterns
+        confirmation_patterns = [
+            'setup is complete',
+            'now we speak',
+            'thanks! setup is complete',
+            'great! i can now translate',
+            'perfect! now i can help you with',
+            'excellent! i\'m ready to translate'
+        ]
+        
+        is_setup_complete = any(pattern in lowered for pattern in confirmation_patterns)
         
         if not is_setup_complete:
             return False
 
-        # Try to find languages after "Now we speak" pattern
-        # Example: "Thanks! Setup is complete. Now we speak English, Russian, Japanese."
-        match = re.search(r'now we speak\s+([^.\n]+)', text, re.IGNORECASE)
-        if not match:
-            # Fallback: try to extract from the entire message if it contains setup confirmation
-            # Look for pattern like "English, Russian" in the text
-            lang_match = re.search(r'([A-Z][a-z]+(?:,\s*[A-Z][a-z]+)*)', text)
-            if lang_match:
-                lang_string = lang_match.group(1).strip()
-            else:
-                return False
-        else:
+        # Extract languages using multiple patterns
+        lang_string = None
+        
+        # Pattern 1: "Now we speak English, Russian, Japanese"
+        match = re.search(r'now we speak\s+([^.\n!?]+)', text, re.IGNORECASE)
+        if match:
             lang_string = match.group(1).strip()
         
-        # Remove any trailing text like "Send your message..."
-        if '\n' in lang_string:
-            lang_string = lang_string.split('\n')[0].strip()
-        if '.' in lang_string:
-            lang_string = lang_string.split('.')[0].strip()
+        # Pattern 2: "translate between English, Russian, Japanese"
+        if not lang_string:
+            match = re.search(r'translate\s+(?:between\s+)?([A-Z][a-z]+(?:,\s*[A-Z][a-z]+)+)', text, re.IGNORECASE)
+            if match:
+                lang_string = match.group(1).strip()
+        
+        # Pattern 3: "help you with English, French"
+        if not lang_string:
+            match = re.search(r'help you with\s+([A-Z][a-z]+(?:,\s*[A-Z][a-z]+)*)', text, re.IGNORECASE)
+            if match:
+                lang_string = match.group(1).strip()
+        
+        # Pattern 4: "ready to translate English, German, Spanish"
+        if not lang_string:
+            match = re.search(r'ready to translate\s+([A-Z][a-z]+(?:,\s*[A-Z][a-z]+)*)', text, re.IGNORECASE)
+            if match:
+                lang_string = match.group(1).strip()
+        
+        # Pattern 5: Look for language list after confirmation words (more flexible)
+        if not lang_string:
+            # Look for pattern after confirmation keywords
+            confirmation_match = re.search(r'(setup is complete|thanks!|great!|perfect!|excellent!).*?([A-Z][a-z]+(?:,\s*[A-Z][a-z]+)+)', text, re.IGNORECASE | re.DOTALL)
+            if confirmation_match:
+                lang_string = confirmation_match.group(2).strip()
+        
+        # Pattern 6: Look for any sequence of capitalized words separated by commas
+        if not lang_string:
+            lang_match = re.search(r'\b([A-Z][a-z]+(?:,\s*[A-Z][a-z]+)+)\b', text)
+            if lang_match:
+                potential_langs = lang_match.group(1)
+                # Verify these look like language names (not random capitalized words)
+                words = [w.strip() for w in potential_langs.split(',')]
+                if not any(word.lower() in ['send', 'your', 'message', 'text', 'thanks', 'great', 'now', 'can', 'help', 'ready'] 
+                          for word in words):
+                    lang_string = potential_langs
+        
+        if not lang_string:
+            app.logger.warning("Could not extract language names from setup confirmation: %s", text)
+            return False
         
         # Clean up the string
+        lang_string = re.sub(r'[.!?].*$', '', lang_string).strip()  # Remove trailing punctuation and text
         lang_string = lang_string.strip('.,:; ')
         
         if not lang_string:
@@ -149,11 +186,26 @@ def parse_and_persist_setup(chat_id, text, persist=True):
             app.logger.warning("Could not extract language names from: %s", lang_string)
             return False
 
-        lang_names = ', '.join(names)
+        # Filter out common non-language words
+        language_names = []
+        excluded_words = {'send', 'your', 'message', 'text', 'now', 'can', 'help', 'ready', 'translate', 'between', 'with'}
+        for name in names:
+            clean_name = name.strip()
+            if len(clean_name) > 1 and clean_name.lower() not in excluded_words:
+                language_names.append(clean_name)
+        
+        if not language_names:
+            app.logger.warning("No valid language names found after filtering: %s", names)
+            return False
+
+        lang_names = ', '.join(language_names)
         
         if persist:
             app.logger.info("SUCCESS: Parsed and persisting language names for chat %s: [%s]", chat_id, lang_names)
             db.upsert_chat_settings(chat_id, '', lang_names, datetime.utcnow().isoformat())
+            # Mark setup as complete in conversation state
+            if chat_id in conversations:
+                conversations[chat_id]['setup_complete'] = True
         
         return True # Return True if parsing was successful
     except Exception as e:
@@ -461,9 +513,16 @@ def telegram_webhook():
             conversations.pop(chat_id, None)
 
     # 4. Получаем или создаем диалог с Copilot Studio
+    need_new_conversation = False
     if chat_id not in conversations:
+        need_new_conversation = True
         app.logger.info("No active conversation for chat %s. Starting a new one.", chat_id)
-        
+    else:
+        # Check if existing conversation is still valid by trying to use it
+        # If the token expired, we'll create a new one when send fails
+        app.logger.info("Using existing conversation for chat %s", chat_id)
+    
+    if need_new_conversation:
         # Stop any leftover long polling for this chat
         active_pollers[chat_id] = False
         
@@ -474,26 +533,29 @@ def telegram_webhook():
                 'token': token,
                 'watermark': None,
                 'last_interaction': time.time(),
-                'is_polling': False
+                'is_polling': False,
+                'setup_complete': False  # Track setup completion state
             }
             app.logger.info("Started new DirectLine conversation for chat %s: %s", chat_id, conv_id)
             
-            # КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: Проверяем, есть ли уже настроенные языки в БД
-            # Если есть - значит пользователь уже прошел настройку и отправляет сообщение для перевода
+            # Check if user has existing language settings
             try:
                 existing_settings = db.get_chat_settings(chat_id)
-                if existing_settings and existing_settings.get('language_names'):
-                    app.logger.info("Found existing language settings for chat %s: %s. This is a translation request, not setup.", 
+                if existing_settings and existing_settings.get('language_names') and text != 'start':
+                    app.logger.info("Found existing language settings for chat %s: %s. Sending quick setup.", 
                                   chat_id, existing_settings.get('language_names'))
-                    # Отправляем настройки в новый диалог перед отправкой сообщения пользователя
-                    saved_languages = existing_settings.get('language_names', 'English, Russian, Korean')
-                    setup_message = f"start\n{saved_languages}"  # Используем сохраненные языки
-                    app.logger.info("Sending quick setup to new conversation for chat %s with languages: %s", chat_id, saved_languages)
-                    setup_activity_id = send_message_to_copilot(conv_id, token, setup_message, from_id=user_from_id)
-                    if setup_activity_id:
-                        recent_activity_ids[chat_id].append(setup_activity_id)
-                    # Даем время Copilot обработать настройку
-                    time.sleep(2.5)
+                    # Send a simplified setup message to initialize the conversation
+                    saved_languages = existing_settings.get('language_names', '')
+                    if saved_languages:
+                        setup_message = f"My languages are: {saved_languages}"
+                        app.logger.info("Sending quick setup to new conversation for chat %s: %s", chat_id, setup_message)
+                        setup_activity_id = send_message_to_copilot(conv_id, token, setup_message, from_id=user_from_id)
+                        if setup_activity_id:
+                            recent_activity_ids[chat_id].append(setup_activity_id)
+                        # Mark setup as complete since we have existing settings
+                        conversations[chat_id]['setup_complete'] = True
+                        # Give time for Copilot to process setup
+                        time.sleep(1.5)
             except Exception as e:
                 app.logger.error("Error checking existing settings for chat %s: %s", chat_id, e, exc_info=True)
         else:
@@ -515,12 +577,53 @@ def telegram_webhook():
         recent_activity_ids[chat_id].append(activity_id)
     else:
         app.logger.warning("Не удалось отправить сообщение для чата %s. Предполагаем, что токен истек, начинаем новый разговор.", chat_id)
+        # Clear the conversation and try to create a new one
         conversations.pop(chat_id, None)
-        error_msg = "Произошла ошибка соединения. Пожалуйста, отправьте свое сообщение еще раз."
-        if chat_type in ['group', 'supergroup']:
-            error_msg = "Connection error occurred. Please resend your message."
-        send_telegram_message(chat_id, error_msg)
-        return jsonify(success=True)
+        # Attempt to retry with a new conversation
+        app.logger.info("Attempting to create new conversation after token failure for chat %s", chat_id)
+        
+        conv_id, token = start_direct_line_conversation()
+        if conv_id and token:
+            conversations[chat_id] = {
+                'id': conv_id,
+                'token': token,
+                'watermark': None,
+                'last_interaction': time.time(),
+                'is_polling': False,
+                'setup_complete': False
+            }
+            
+            # For existing users, send quick setup again
+            try:
+                existing_settings = db.get_chat_settings(chat_id)
+                if existing_settings and existing_settings.get('language_names'):
+                    saved_languages = existing_settings.get('language_names', '')
+                    if saved_languages:
+                        setup_message = f"My languages are: {saved_languages}"
+                        setup_activity_id = send_message_to_copilot(conv_id, token, setup_message, from_id=user_from_id)
+                        if setup_activity_id:
+                            recent_activity_ids[chat_id].append(setup_activity_id)
+                        conversations[chat_id]['setup_complete'] = True
+                        time.sleep(1.0)
+            except Exception as e:
+                app.logger.error("Error in retry setup for chat %s: %s", chat_id, e)
+            
+            # Retry sending the original message
+            activity_id = send_message_to_copilot(conv_id, token, text, from_id=user_from_id)
+            if activity_id:
+                recent_activity_ids[chat_id].append(activity_id)
+            else:
+                error_msg = "Произошла ошибка соединения. Пожалуйста, отправьте свое сообщение еще раз."
+                if chat_type in ['group', 'supergroup']:
+                    error_msg = "Connection error occurred. Please resend your message."
+                send_telegram_message(chat_id, error_msg)
+                return jsonify(success=True)
+        else:
+            error_msg = "Произошла ошибка соединения. Пожалуйста, отправьте свое сообщение еще раз."
+            if chat_type in ['group', 'supergroup']:
+                error_msg = "Connection error occurred. Please resend your message."
+            send_telegram_message(chat_id, error_msg)
+            return jsonify(success=True)
 
     # 6. Ожидаем и обрабатываем ответ от Copilot
     time.sleep(1.2)

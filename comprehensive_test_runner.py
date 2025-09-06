@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from tests.comprehensive_unit_tests import run_comprehensive_unit_tests
 from tests.integration_tests import run_integration_tests
 from tests.error_simulation_tests import run_error_simulation_tests
+from tests.test_group_chat_functionality import run_group_chat_functionality_tests
 from test_config import TestConfig, setup_test_environment, cleanup_test_environment
 from test_utilities import (TestDataManager, TestPerformanceMonitor, 
                            TestResultAnalyzer, TestReportGenerator, 
@@ -56,6 +57,7 @@ class ComprehensiveTestRunner:
         # Test results storage
         self.test_results = {
             "comprehensive_unit_tests": None,
+            "group_chat_functionality_tests": None,
             "integration_tests": None,
             "error_simulation_tests": None,
             "message_simulation_tests": None,
@@ -103,6 +105,7 @@ class ComprehensiveTestRunner:
                 # Run test suites
                 test_suites = {
                     "comprehensive_unit_tests": self._run_unit_tests,
+                    "group_chat_functionality_tests": self._run_group_chat_tests,
                     "integration_tests": self._run_integration_tests,
                     "error_simulation_tests": self._run_error_simulation_tests,
                     "message_simulation_tests": self._run_message_simulation_tests,
@@ -211,6 +214,43 @@ class ComprehensiveTestRunner:
             
         except Exception as e:
             self.logger.error(f"Unit tests failed with exception: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def _run_group_chat_tests(self) -> Dict[str, Any]:
+        """Run group chat functionality tests"""
+        self.logger.info("Executing group chat functionality tests...")
+        
+        try:
+            # Capture output
+            original_stdout = sys.stdout
+            captured_output = StringIO()
+            sys.stdout = captured_output
+            
+            success, unittest_result = run_group_chat_functionality_tests()
+            
+            # Restore stdout
+            sys.stdout = original_stdout
+            output = captured_output.getvalue()
+            
+            result = {
+                "success": success,
+                "tests_run": unittest_result.testsRun,
+                "failures": len(unittest_result.failures),
+                "errors": len(unittest_result.errors),
+                "skipped": len(getattr(unittest_result, 'skipped', [])),
+                "success_rate": ((unittest_result.testsRun - len(unittest_result.failures) - len(unittest_result.errors)) / 
+                               unittest_result.testsRun) if unittest_result.testsRun > 0 else 0,
+                "detailed_failures": [{"test": str(test), "traceback": traceback} 
+                                    for test, traceback in unittest_result.failures],
+                "detailed_errors": [{"test": str(test), "traceback": traceback} 
+                                  for test, traceback in unittest_result.errors],
+                "output": output
+            }
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Group chat tests failed with exception: {e}")
             return {"success": False, "error": str(e)}
     
     def _run_integration_tests(self) -> Dict[str, Any]:
@@ -607,7 +647,7 @@ def main():
     parser.add_argument("--verbose", "-v", action="store_true", 
                        help="Enable verbose output")
     parser.add_argument("--suite", "-s", action="append", 
-                       choices=["comprehensive_unit_tests", "integration_tests", 
+                       choices=["comprehensive_unit_tests", "group_chat_functionality_tests", "integration_tests", 
                                "error_simulation_tests", "message_simulation_tests"],
                        help="Specific test suite to run (can be specified multiple times)")
     parser.add_argument("--quick", "-q", action="store_true",

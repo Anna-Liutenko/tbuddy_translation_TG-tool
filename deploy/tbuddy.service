@@ -1,15 +1,70 @@
 [Unit]
-Description=T.Buddy translation relay (Gunicorn)
+Description=T.Buddy Translation Telegram Bot (Gunicorn)
+Documentation=https://github.com/your-org/tbuddy_translation_TG-tool
 After=network.target
+Wants=network-online.target
 
 [Service]
-User=root
+Type=notify
+User=tbuddy
 Group=www-data
 WorkingDirectory=/opt/tbuddy
-# Эта строка решит проблему
-EnvironmentFile=/opt/tbuddy/.env
-ExecStart=/opt/tbuddy/.venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8080 app:app
+
+# Environment Configuration
+# Load environment variables from secure location outside application directory
+EnvironmentFile=/etc/tbuddy/env
+
+# Security Settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/tbuddy
+ReadWritePaths=/var/log/tbuddy
+ReadWritePaths=/var/lib/tbuddy
+
+# Resource Limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Process Management
+ExecStart=/opt/tbuddy/venv/bin/gunicorn \
+    --workers 3 \
+    --worker-class sync \
+    --worker-connections 1000 \
+    --timeout 30 \
+    --keep-alive 2 \
+    --max-requests 1000 \
+    --max-requests-jitter 100 \
+    --bind 127.0.0.1:8080 \
+    --pid /var/run/tbuddy/tbuddy.pid \
+    --access-logfile /var/log/tbuddy/access.log \
+    --error-logfile /var/log/tbuddy/error.log \
+    --log-level info \
+    --capture-output \
+    --enable-stdio-inheritance \
+    app:app
+
+ExecReload=/bin/kill -s HUP $MAINPID
+ExecStop=/bin/kill -s TERM $MAINPID
+KillMode=mixed
+TimeoutStopSec=5
+PIDFile=/var/run/tbuddy/tbuddy.pid
+
+# Restart Policy
 Restart=always
+RestartSec=5
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Health Check
+# Systemd will consider the service started when gunicorn sends the notify signal
+WatchdogSec=30
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tbuddy
 
 [Install]
 WantedBy=multi-user.target

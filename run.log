@@ -30,3 +30,477 @@
 2025-09-05 23:32:33,477 - app - WARNING - Could not extract language names from setup confirmation: Setup is complete. Now we speak. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:182]
 2025-09-05 23:32:33,478 - app - WARNING - Could not extract language names from setup confirmation: Perfect! Now I can help you with . [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:182]
 2025-09-05 23:32:33,488 - app - WARNING - Could not extract language names from setup confirmation: Perfect! Now I can help you with **English**, *Spanish*, French. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:182]
+2025-09-06 00:30:54,584 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: True) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:30:54,586 - app - INFO - Processing text 'Test config' for chat_id -12345 (type: group, user: 12345) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:30:54,586 - app - INFO - No active conversation for chat -12345. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:30:54,587 - app - INFO - Started new DirectLine conversation for chat -12345: conv_123 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:558]
+2025-09-06 00:30:56,405 - app - INFO - DirectLine send activity status=403 convo=conv_123 from_id=telegram_user_12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:352]
+2025-09-06 00:30:56,415 - app - INFO - Attempting to create new conversation after token failure for chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:602]
+2025-09-06 00:30:57,741 - app - INFO - DirectLine send activity status=403 convo=conv_123 from_id=telegram_user_12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:352]
+2025-09-06 00:30:57,746 - app - INFO - DEBUG_LOCAL enabled — would send to chat -12345: Connection error occurred. Please resend your message. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:791]
+2025-09-06 00:30:57,746 - app - DEBUG - [LOCAL FALLBACK] chat=-12345 text=Connection error occurred. Please resend your message. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:793]
+2025-09-06 00:30:57,755 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: True) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:30:57,756 - app - INFO - Processing text 'Test config' for chat_id -12345 (type: group, user: 12345) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:30:57,756 - app - INFO - Using existing conversation for chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:542]
+2025-09-06 00:30:59,069 - app - INFO - DirectLine send activity status=403 convo=conv_123 from_id=telegram_user_12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:352]
+2025-09-06 00:30:59,073 - app - INFO - Attempting to create new conversation after token failure for chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:602]
+2025-09-06 00:31:00,406 - app - INFO - DirectLine send activity status=403 convo=conv_123 from_id=telegram_user_12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:352]
+2025-09-06 00:31:00,409 - app - INFO - DEBUG_LOCAL enabled — would send to chat -12345: Connection error occurred. Please resend your message. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:791]
+2025-09-06 00:31:00,410 - app - DEBUG - [LOCAL FALLBACK] chat=-12345 text=Connection error occurred. Please resend your message. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:793]
+2025-09-06 00:31:00,412 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: True) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:31:00,413 - app - INFO - Processing text 'Test config' for chat_id -12345 (type: group, user: 12345) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:31:00,413 - app - INFO - Using existing conversation for chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:542]
+2025-09-06 00:31:02,133 - app - INFO - DirectLine send activity status=403 convo=conv_123 from_id=telegram_user_12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:352]
+2025-09-06 00:31:02,141 - app - INFO - Attempting to create new conversation after token failure for chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:602]
+2025-09-06 00:31:03,427 - app - INFO - DirectLine send activity status=403 convo=conv_123 from_id=telegram_user_12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:352]
+2025-09-06 00:31:03,433 - app - INFO - DEBUG_LOCAL enabled — would send to chat -12345: Connection error occurred. Please resend your message. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:791]
+2025-09-06 00:31:03,433 - app - DEBUG - [LOCAL FALLBACK] chat=-12345 text=Connection error occurred. Please resend your message. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:793]
+2025-09-06 00:31:03,437 - app - INFO - Group chat processing disabled, ignoring non-command message in chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:476]
+2025-09-06 00:31:03,438 - app - INFO - Group chat processing disabled, ignoring non-command message in chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:476]
+2025-09-06 00:31:03,439 - app - INFO - Group chat processing disabled, ignoring non-command message in chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:476]
+2025-09-06 00:31:03,440 - app - INFO - Group chat processing disabled, ignoring non-command message in chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:476]
+2025-09-06 00:31:03,441 - app - INFO - Group chat processing disabled, ignoring non-command message in chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:476]
+2025-09-06 00:31:03,442 - app - INFO - Group chat processing disabled, ignoring non-command message in chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:476]
+2025-09-06 00:31:03,443 - app - INFO - Group chat processing disabled, ignoring non-command message in chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:476]
+2025-09-06 00:31:03,468 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: False) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:31:03,470 - app - INFO - Processing text '/start' for chat_id -12345 (type: group, user: 12345) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:31:03,470 - app - INFO - No active conversation for chat -12345. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:31:03,471 - app - INFO - Started new DirectLine conversation for chat -12345: conv_123 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:558]
+2025-09-06 00:31:05,973 - app - INFO - DirectLine get activities status=403 convo=conv_123 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:31:05,973 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:31:05,978 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: False) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:31:05,980 - app - INFO - Processing text '/reset' for chat_id -12345 (type: group, user: 12345) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:31:05,980 - app - INFO - Processing /reset for chat -12345. Clearing all state. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:504]
+2025-09-06 00:31:05,981 - app - INFO - Deleted DB settings for chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:511]
+2025-09-06 00:31:05,982 - app - INFO - Cleared in-memory state for chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:520]
+2025-09-06 00:31:05,982 - app - INFO - No active conversation for chat -12345. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:31:05,983 - app - INFO - Started new DirectLine conversation for chat -12345: conv_456 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:558]
+2025-09-06 00:31:07,628 - app - INFO - DirectLine get activities status=403 convo=conv_123 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:31:07,629 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:31:08,481 - app - INFO - DirectLine get activities status=403 convo=conv_456 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:31:08,482 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:31:08,503 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: True) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:31:08,504 - app - INFO - Processing text 'Group message' for chat_id -12345 (type: group, user: 12345) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:31:08,505 - app - INFO - No active conversation for chat -12345. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:31:08,506 - app - INFO - Started new DirectLine conversation for chat -12345: conv_123 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:558]
+2025-09-06 00:31:08,633 - app - INFO - Long poller stopping for chat=-12345 (cancelled) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:249]
+2025-09-06 00:31:09,710 - app - ERROR - Exception on /webhook [POST] [in C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py:875]
+Traceback (most recent call last):
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py", line 667, in telegram_webhook
+    activity_id = activity.get('id')
+                  ^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'get'
+2025-09-06 00:31:09,715 - app - INFO - Processing text 'Private message' for chat_id 54321 (type: private, user: 54321) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:31:09,715 - app - INFO - No active conversation for chat 54321. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:31:09,717 - app - INFO - Started new DirectLine conversation for chat 54321: conv_123 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:558]
+2025-09-06 00:31:09,802 - app - INFO - DirectLine get activities status=403 convo=conv_456 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:31:09,804 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:31:10,807 - app - INFO - Long poller stopping for chat=-12345 (cancelled) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:249]
+2025-09-06 00:31:10,923 - app - ERROR - Exception on /webhook [POST] [in C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py:875]
+Traceback (most recent call last):
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py", line 667, in telegram_webhook
+    activity_id = activity.get('id')
+                  ^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'get'
+2025-09-06 00:31:10,946 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: True) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:31:10,948 - app - INFO - Processing text 'Test error' for chat_id -12345 (type: group, user: 12345) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:31:10,948 - app - INFO - No active conversation for chat -12345. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:31:10,949 - app - ERROR - Failed to start DirectLine conversation for chat -12345. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:581]
+2025-09-06 00:31:10,961 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: True) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:31:10,961 - app - INFO - Processing text 'Message from user 1' for chat_id -12345 (type: group, user: 111) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:31:10,962 - app - INFO - No active conversation for chat -12345. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:31:10,962 - app - INFO - Started new DirectLine conversation for chat -12345: conv_123 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:558]
+2025-09-06 00:31:14,006 - app - INFO - DirectLine get activities status=403 convo=conv_123 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:31:14,008 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:31:14,014 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: True) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:31:14,015 - app - INFO - Processing text 'Message from user 2' for chat_id -12345 (type: group, user: 222) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:31:14,016 - app - INFO - Using existing conversation for chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:542]
+2025-09-06 00:31:15,307 - app - INFO - DirectLine get activities status=403 convo=conv_123 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:31:15,308 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:31:16,521 - app - INFO - DirectLine get activities status=403 convo=conv_123 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:31:16,522 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:31:16,541 - app - INFO - Group chat processing disabled, ignoring non-command message in chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:476]
+2025-09-06 00:31:16,550 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: True) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:31:16,552 - app - INFO - Processing text 'Hello world' for chat_id -12345 (type: group, user: 12345) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:31:16,553 - app - INFO - No active conversation for chat -12345. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:31:16,553 - app - INFO - Started new DirectLine conversation for chat -12345: conv_123 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:558]
+2025-09-06 00:31:17,757 - app - ERROR - Exception on /webhook [POST] [in C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py:875]
+Traceback (most recent call last):
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py", line 667, in telegram_webhook
+    activity_id = activity.get('id')
+                  ^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'get'
+2025-09-06 00:31:17,783 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: True) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:31:17,784 - app - INFO - Processing text 'Test typing' for chat_id -12345 (type: group, user: 12345) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:31:17,785 - app - INFO - No active conversation for chat -12345. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:31:17,785 - app - INFO - Started new DirectLine conversation for chat -12345: conv_123 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:558]
+2025-09-06 00:31:18,241 - app - INFO - DirectLine get activities status=403 convo=conv_123 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:31:18,242 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:31:19,244 - app - INFO - Long poller stopping for chat=-12345 (cancelled) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:249]
+2025-09-06 00:31:20,276 - app - INFO - DirectLine get activities status=403 convo=conv_123 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:31:20,278 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:31:21,590 - app - INFO - DirectLine get activities status=403 convo=conv_123 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:31:21,590 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:31:21,802 - app - INFO - Processing text 'Private chat message' for chat_id 54321 (type: private, user: 54321) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:31:21,802 - app - INFO - No active conversation for chat 54321. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:31:21,803 - app - INFO - Started new DirectLine conversation for chat 54321: conv_123 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:558]
+2025-09-06 00:31:22,592 - app - INFO - Long poller stopping for chat=-12345 (cancelled) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:249]
+2025-09-06 00:31:23,008 - app - ERROR - Exception on /webhook [POST] [in C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py:875]
+Traceback (most recent call last):
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py", line 667, in telegram_webhook
+    activity_id = activity.get('id')
+                  ^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'get'
+2025-09-06 00:31:23,028 - app - INFO - Processing message in group chat -100123456789 (type: supergroup, processing_enabled: True) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:31:23,028 - app - INFO - Processing text 'Test message' for chat_id -100123456789 (type: supergroup, user: 12345) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:31:23,028 - app - INFO - No active conversation for chat -100123456789. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:31:23,029 - app - INFO - Started new DirectLine conversation for chat -100123456789: conv_123 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:558]
+2025-09-06 00:31:25,937 - app - INFO - DirectLine get activities status=403 convo=conv_123 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:31:25,938 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:31:27,295 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:31:29,100 - app - DEBUG - [LOCAL FALLBACK] chat=-12345 text=Connection error occurred. Please resend your message. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:793]
+2025-09-06 00:34:10,269 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: True) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:34:10,271 - app - INFO - Processing text 'Test config' for chat_id -12345 (type: group, user: 12345) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:34:10,271 - app - INFO - No active conversation for chat -12345. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:34:10,272 - app - INFO - Started new DirectLine conversation for chat -12345: conv_123 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:558]
+2025-09-06 00:34:12,344 - app - INFO - DirectLine send activity status=403 convo=conv_123 from_id=telegram_user_12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:352]
+2025-09-06 00:34:12,352 - app - INFO - Attempting to create new conversation after token failure for chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:602]
+2025-09-06 00:34:13,641 - app - INFO - DirectLine send activity status=403 convo=conv_123 from_id=telegram_user_12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:352]
+2025-09-06 00:34:13,644 - app - INFO - DEBUG_LOCAL enabled — would send to chat -12345: Connection error occurred. Please resend your message. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:791]
+2025-09-06 00:34:13,645 - app - DEBUG - [LOCAL FALLBACK] chat=-12345 text=Connection error occurred. Please resend your message. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:793]
+2025-09-06 00:34:13,647 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: True) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:34:13,648 - app - INFO - Processing text 'Test config' for chat_id -12345 (type: group, user: 12345) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:34:13,649 - app - INFO - Using existing conversation for chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:542]
+2025-09-06 00:34:14,957 - app - INFO - DirectLine send activity status=403 convo=conv_123 from_id=telegram_user_12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:352]
+2025-09-06 00:34:14,962 - app - INFO - Attempting to create new conversation after token failure for chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:602]
+2025-09-06 00:34:16,250 - app - INFO - DirectLine send activity status=403 convo=conv_123 from_id=telegram_user_12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:352]
+2025-09-06 00:34:16,254 - app - INFO - DEBUG_LOCAL enabled — would send to chat -12345: Connection error occurred. Please resend your message. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:791]
+2025-09-06 00:34:16,254 - app - DEBUG - [LOCAL FALLBACK] chat=-12345 text=Connection error occurred. Please resend your message. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:793]
+2025-09-06 00:34:16,254 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: True) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:34:16,256 - app - INFO - Processing text 'Test config' for chat_id -12345 (type: group, user: 12345) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:34:16,256 - app - INFO - Using existing conversation for chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:542]
+2025-09-06 00:34:18,206 - app - INFO - DirectLine send activity status=403 convo=conv_123 from_id=telegram_user_12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:352]
+2025-09-06 00:34:18,212 - app - INFO - Attempting to create new conversation after token failure for chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:602]
+2025-09-06 00:34:19,520 - app - INFO - DirectLine send activity status=403 convo=conv_123 from_id=telegram_user_12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:352]
+2025-09-06 00:34:19,523 - app - INFO - DEBUG_LOCAL enabled — would send to chat -12345: Connection error occurred. Please resend your message. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:791]
+2025-09-06 00:34:19,525 - app - DEBUG - [LOCAL FALLBACK] chat=-12345 text=Connection error occurred. Please resend your message. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:793]
+2025-09-06 00:34:19,527 - app - INFO - Group chat processing disabled, ignoring non-command message in chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:476]
+2025-09-06 00:34:19,528 - app - INFO - Group chat processing disabled, ignoring non-command message in chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:476]
+2025-09-06 00:34:19,531 - app - INFO - Group chat processing disabled, ignoring non-command message in chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:476]
+2025-09-06 00:34:19,532 - app - INFO - Group chat processing disabled, ignoring non-command message in chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:476]
+2025-09-06 00:34:19,532 - app - INFO - Group chat processing disabled, ignoring non-command message in chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:476]
+2025-09-06 00:34:19,533 - app - INFO - Group chat processing disabled, ignoring non-command message in chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:476]
+2025-09-06 00:34:19,534 - app - INFO - Group chat processing disabled, ignoring non-command message in chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:476]
+2025-09-06 00:34:19,553 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: False) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:34:19,553 - app - INFO - Processing text '/start' for chat_id -12345 (type: group, user: 12345) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:34:19,554 - app - INFO - No active conversation for chat -12345. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:34:19,555 - app - INFO - Started new DirectLine conversation for chat -12345: conv_123 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:558]
+2025-09-06 00:34:22,057 - app - INFO - DirectLine get activities status=403 convo=conv_123 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:34:22,058 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:34:22,064 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: False) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:34:22,066 - app - INFO - Processing text '/reset' for chat_id -12345 (type: group, user: 12345) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:34:22,067 - app - INFO - Processing /reset for chat -12345. Clearing all state. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:504]
+2025-09-06 00:34:22,067 - app - INFO - Deleted DB settings for chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:511]
+2025-09-06 00:34:22,068 - app - INFO - Cleared in-memory state for chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:520]
+2025-09-06 00:34:22,068 - app - INFO - No active conversation for chat -12345. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:34:22,069 - app - INFO - Started new DirectLine conversation for chat -12345: conv_456 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:558]
+2025-09-06 00:34:23,845 - app - INFO - DirectLine get activities status=403 convo=conv_123 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:34:23,846 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:34:24,568 - app - INFO - DirectLine get activities status=403 convo=conv_456 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:34:24,568 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:34:24,586 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: True) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:34:24,587 - app - INFO - Processing text 'Group message' for chat_id -12345 (type: group, user: 12345) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:34:24,587 - app - INFO - No active conversation for chat -12345. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:34:24,588 - app - INFO - Started new DirectLine conversation for chat -12345: conv_123 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:558]
+2025-09-06 00:34:24,847 - app - INFO - Long poller stopping for chat=-12345 (cancelled) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:249]
+2025-09-06 00:34:25,791 - app - ERROR - Exception on /webhook [POST] [in C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py:875]
+Traceback (most recent call last):
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py", line 667, in telegram_webhook
+    activity_id = activity.get('id')
+                  ^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'get'
+2025-09-06 00:34:25,794 - app - INFO - Processing text 'Private message' for chat_id 54321 (type: private, user: 54321) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:34:25,794 - app - INFO - No active conversation for chat 54321. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:34:25,795 - app - INFO - Started new DirectLine conversation for chat 54321: conv_123 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:558]
+2025-09-06 00:34:25,859 - app - INFO - DirectLine get activities status=403 convo=conv_456 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:34:25,860 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:34:26,863 - app - INFO - Long poller stopping for chat=-12345 (cancelled) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:249]
+2025-09-06 00:34:26,998 - app - ERROR - Exception on /webhook [POST] [in C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py:875]
+Traceback (most recent call last):
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py", line 667, in telegram_webhook
+    activity_id = activity.get('id')
+                  ^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'get'
+2025-09-06 00:34:27,014 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: True) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:34:27,016 - app - INFO - Processing text 'Test error' for chat_id -12345 (type: group, user: 12345) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:34:27,017 - app - INFO - No active conversation for chat -12345. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:34:27,017 - app - ERROR - Failed to start DirectLine conversation for chat -12345. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:581]
+2025-09-06 00:34:27,027 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: True) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:34:27,028 - app - INFO - Processing text 'Message from user 1' for chat_id -12345 (type: group, user: 111) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:34:27,028 - app - INFO - No active conversation for chat -12345. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:34:27,029 - app - INFO - Started new DirectLine conversation for chat -12345: conv_123 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:558]
+2025-09-06 00:34:29,990 - app - INFO - DirectLine get activities status=403 convo=conv_123 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:34:29,991 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:34:29,996 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: True) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:34:29,997 - app - INFO - Processing text 'Message from user 2' for chat_id -12345 (type: group, user: 222) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:34:29,998 - app - INFO - Using existing conversation for chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:542]
+2025-09-06 00:34:31,322 - app - INFO - DirectLine get activities status=403 convo=conv_123 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:34:31,323 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:34:32,528 - app - INFO - DirectLine get activities status=403 convo=conv_123 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:34:32,529 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:34:32,543 - app - INFO - Group chat processing disabled, ignoring non-command message in chat -12345 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:476]
+2025-09-06 00:34:32,552 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: True) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:34:32,553 - app - INFO - Processing text 'Hello world' for chat_id -12345 (type: group, user: 12345) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:34:32,553 - app - INFO - No active conversation for chat -12345. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:34:32,553 - app - INFO - Started new DirectLine conversation for chat -12345: conv_123 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:558]
+2025-09-06 00:34:33,760 - app - ERROR - Exception on /webhook [POST] [in C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py:875]
+Traceback (most recent call last):
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py", line 667, in telegram_webhook
+    activity_id = activity.get('id')
+                  ^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'get'
+2025-09-06 00:34:33,772 - app - INFO - Processing message in group chat -12345 (type: group, processing_enabled: True) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:34:33,774 - app - INFO - Processing text 'Test typing' for chat_id -12345 (type: group, user: 12345) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:34:33,774 - app - INFO - No active conversation for chat -12345. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:34:33,776 - app - INFO - Started new DirectLine conversation for chat -12345: conv_123 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:558]
+2025-09-06 00:34:33,973 - app - INFO - DirectLine get activities status=403 convo=conv_123 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:34:33,974 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:34:34,978 - app - INFO - Long poller stopping for chat=-12345 (cancelled) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:249]
+2025-09-06 00:34:36,546 - app - INFO - DirectLine get activities status=403 convo=conv_123 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:34:36,547 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:34:37,869 - app - INFO - DirectLine get activities status=403 convo=conv_123 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:34:37,870 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:34:38,066 - app - INFO - Processing text 'Private chat message' for chat_id 54321 (type: private, user: 54321) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:34:38,067 - app - INFO - No active conversation for chat 54321. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:34:38,067 - app - INFO - Started new DirectLine conversation for chat 54321: conv_123 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:558]
+2025-09-06 00:34:38,872 - app - INFO - Long poller stopping for chat=-12345 (cancelled) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:249]
+2025-09-06 00:34:39,270 - app - ERROR - Exception on /webhook [POST] [in C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py:875]
+Traceback (most recent call last):
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py", line 667, in telegram_webhook
+    activity_id = activity.get('id')
+                  ^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'get'
+2025-09-06 00:34:39,288 - app - INFO - Processing message in group chat -100123456789 (type: supergroup, processing_enabled: True) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:484]
+2025-09-06 00:34:39,289 - app - INFO - Processing text 'Test message' for chat_id -100123456789 (type: supergroup, user: 12345) [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:499]
+2025-09-06 00:34:39,290 - app - INFO - No active conversation for chat -100123456789. Starting a new one. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:538]
+2025-09-06 00:34:39,290 - app - INFO - Started new DirectLine conversation for chat -100123456789: conv_123 [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:558]
+2025-09-06 00:34:42,220 - app - INFO - DirectLine get activities status=403 convo=conv_123 watermark=None [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:382]
+2025-09-06 00:34:42,221 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:34:43,911 - app - ERROR - Error fetching Direct Line activities: 403 {
+  "error": {
+    "code": "BadArgument",
+    "message": "Invalid token or secret"
+  }
+} [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:445]
+2025-09-06 00:34:45,217 - app - DEBUG - [LOCAL FALLBACK] chat=-12345 text=Connection error occurred. Please resend your message. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:793]

@@ -466,20 +466,23 @@ def telegram_webhook():
     if not text:
         return jsonify(success=True)
 
-    # For group chats, only respond to messages that start with bot commands or mention the bot
+    # Group chat processing control - configurable behavior
     if chat_type in ['group', 'supergroup']:
-        # Get bot info to check for mentions
-        bot_username = None  # We could get this from getMe API call if needed
+        enable_group_processing = os.getenv('ENABLE_GROUP_CHAT_PROCESSING', 'true').lower() == 'true'
         
-        # Only process if it's a command or if the bot is mentioned
-        if not (text.startswith('/') or (bot_username and f'@{bot_username}' in text)):
-            # In groups, ignore regular messages unless they're commands
-            app.logger.info("Ignoring non-command message in group chat %s", chat_id)
-            return jsonify(success=True)
+        if not enable_group_processing:
+            # Legacy behavior: Only process commands in groups when disabled
+            if not text.startswith('/'):
+                app.logger.info("Group chat processing disabled, ignoring non-command message in chat %s", chat_id)
+                return jsonify(success=True)
         
-        # Remove bot mention if present
-        if bot_username and f'@{bot_username}' in text:
-            text = text.replace(f'@{bot_username}', '').strip()
+        # Optional: Future enhancement for @mention support
+        # bot_username = None  # Could get this from getMe API call if needed
+        # if bot_username and f'@{bot_username}' in text:
+        #     text = text.replace(f'@{bot_username}', '').strip()
+        
+        app.logger.info("Processing message in group chat %s (type: %s, processing_enabled: %s)", 
+                       chat_id, chat_type, enable_group_processing)
 
     # Fire-and-forget: send 'typing' action to Telegram ~1s after we receive the user's message.
     def _send_typing_after_delay(cid, delay_sec=1.0):

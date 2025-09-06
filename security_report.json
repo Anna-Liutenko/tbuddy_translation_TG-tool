@@ -1,0 +1,544 @@
+{
+  "timestamp": "unknown",
+  "repository_path": "C:\\Users\\annal\\Documents\\CopilotAgents\\tbuddy_translation_TG-tool",
+  "critical_issues": 6,
+  "high_issues": 44,
+  "medium_issues": 0,
+  "warnings": [],
+  "total_issues": 50,
+  "issues": [
+    {
+      "severity": "HIGH",
+      "category": "GITIGNORE",
+      "description": "Missing security patterns in .gitignore: *.env, *.sqlite*, *.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "ENV_TEMPLATE",
+      "description": "Template .env.example contains real secret: database_url at line 23",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "ENV_TEMPLATE",
+      "description": "Template .env.production.example contains real secret: database_url at line 23",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "ENV_TEMPLATE",
+      "description": "Template .env.testing contains real secret: database_url at line 19",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: run.log",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: run.log",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: test_reports\\test_run_20250906_033410.log",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: tests\\__pycache__\\check_parse_skip.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: tests\\__pycache__\\comprehensive_unit_tests.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: tests\\__pycache__\\error_simulation_tests.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: tests\\__pycache__\\integration_tests.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: tests\\__pycache__\\test_group_chat_functionality.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\app.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\db.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\enhanced_features.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\github_client.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\git_analyzer.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\message_simulator.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\models.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\status_reporter.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\test_config.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\test_server.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\test_utilities.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: chat_settings.db",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "GITIGNORE",
+      "description": "Missing security patterns in .gitignore: *.env, *.sqlite*, *.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "ENV_TEMPLATE",
+      "description": "Template .env.example contains real secret: database_url at line 23",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "ENV_TEMPLATE",
+      "description": "Template .env.production.example contains real secret: database_url at line 23",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "ENV_TEMPLATE",
+      "description": "Template .env.testing contains real secret: database_url at line 19",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: run.log",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: run.log",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: test_reports\\test_run_20250906_033410.log",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: tests\\__pycache__\\check_parse_skip.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: tests\\__pycache__\\comprehensive_unit_tests.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: tests\\__pycache__\\error_simulation_tests.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: tests\\__pycache__\\integration_tests.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: tests\\__pycache__\\test_group_chat_functionality.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\app.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\db.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\enhanced_features.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\github_client.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\git_analyzer.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\message_simulator.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\models.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\status_reporter.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\test_config.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\test_server.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\test_utilities.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: chat_settings.db",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "GITIGNORE",
+      "description": "Missing security patterns in .gitignore: *.env, *.sqlite*, *.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "ENV_TEMPLATE",
+      "description": "Template .env.example contains real secret: database_url at line 23",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "ENV_TEMPLATE",
+      "description": "Template .env.production.example contains real secret: database_url at line 23",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "ENV_TEMPLATE",
+      "description": "Template .env.testing contains real secret: database_url at line 19",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: run.log",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: run.log",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: test_reports\\test_run_20250906_033410.log",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: tests\\__pycache__\\check_parse_skip.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: tests\\__pycache__\\comprehensive_unit_tests.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: tests\\__pycache__\\error_simulation_tests.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: tests\\__pycache__\\integration_tests.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: tests\\__pycache__\\test_group_chat_functionality.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\app.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\db.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\enhanced_features.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\github_client.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\git_analyzer.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\message_simulator.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\models.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\status_reporter.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\test_config.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\test_server.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: __pycache__\\test_utilities.cpython-311.pyc",
+      "file_path": null,
+      "line_number": null
+    },
+    {
+      "severity": "HIGH",
+      "category": "FORBIDDEN_FILE",
+      "description": "Forbidden file found: chat_settings.db",
+      "file_path": null,
+      "line_number": null
+    }
+  ],
+  "scan_summary": {
+    "gitignore_valid": false,
+    "templates_valid": false,
+    "no_secrets_found": true,
+    "permissions_secure": true,
+    "no_forbidden_files": false,
+    "deployment_secure": true
+  }
+}

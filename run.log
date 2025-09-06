@@ -25,3 +25,8 @@
 2025-09-05 22:23:01,138 - app - INFO - SUCCESS: Parsed and persisting language names for chat fresh_user_001: [English, Polish, Portuguese] [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:184]
 2025-09-05 22:24:20,550 - app - INFO - SUCCESS: Parsed and persisting language names for chat test_setup_tracking: [English, German] [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:204]
 2025-09-05 22:24:38,403 - app - INFO - SUCCESS: Parsed and persisting language names for chat test_setup_tracking: [English, German] [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:204]
+2025-09-05 23:32:33,209 - app - WARNING - Could not extract language names from setup confirmation: Great! I can now translate French. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:182]
+2025-09-05 23:32:33,477 - app - WARNING - Could not extract language names from setup confirmation: Setup is complete. Now we speak  [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:182]
+2025-09-05 23:32:33,477 - app - WARNING - Could not extract language names from setup confirmation: Setup is complete. Now we speak. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:182]
+2025-09-05 23:32:33,478 - app - WARNING - Could not extract language names from setup confirmation: Perfect! Now I can help you with . [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:182]
+2025-09-05 23:32:33,488 - app - WARNING - Could not extract language names from setup confirmation: Perfect! Now I can help you with **English**, *Spanish*, French. [in C:\Users\annal\Documents\CopilotAgents\tbuddy_translation_TG-tool\app.py:182]

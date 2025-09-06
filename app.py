@@ -1,5 +1,6 @@
 import os
 import sys
+import os
 import time
 import json
 import logging
@@ -106,11 +107,14 @@ def parse_and_persist_setup(chat_id, text, persist=True):
         # Look for various confirmation patterns
         confirmation_patterns = [
             'setup is complete',
+            'setup complete',
             'now we speak',
             'thanks! setup is complete',
             'great! i can now translate',
             'perfect! now i can help you with',
-            'excellent! i\'m ready to translate'
+            'excellent! i\'m ready to translate',
+            'ready for',
+            'configuration successful'
         ]
         
         is_setup_complete = any(pattern in lowered for pattern in confirmation_patterns)
@@ -144,14 +148,26 @@ def parse_and_persist_setup(chat_id, text, persist=True):
             if match:
                 lang_string = match.group(1).strip()
         
-        # Pattern 5: Look for language list after confirmation words (more flexible)
+        # Pattern 5: "Ready for English, Spanish, Portuguese translation"
+        if not lang_string:
+            match = re.search(r'ready for\s+([A-Z][a-z]+(?:,\s*[A-Z][a-z]+)*)\s+translation', text, re.IGNORECASE)
+            if match:
+                lang_string = match.group(1).strip()
+        
+        # Pattern 6: "Setup complete! Ready for [languages]"
+        if not lang_string:
+            match = re.search(r'setup complete.*?ready for\s+([A-Z][a-z]+(?:,\s*[A-Z][a-z]+)*)', text, re.IGNORECASE | re.DOTALL)
+            if match:
+                lang_string = match.group(1).strip()
+        
+        # Pattern 7: Look for language list after confirmation words (more flexible)
         if not lang_string:
             # Look for pattern after confirmation keywords
-            confirmation_match = re.search(r'(setup is complete|thanks!|great!|perfect!|excellent!).*?([A-Z][a-z]+(?:,\s*[A-Z][a-z]+)+)', text, re.IGNORECASE | re.DOTALL)
+            confirmation_match = re.search(r'(setup is complete|setup complete|thanks!|great!|perfect!|excellent!|ready for).*?([A-Z][a-z]+(?:,\s*[A-Z][a-z]+)+)', text, re.IGNORECASE | re.DOTALL)
             if confirmation_match:
                 lang_string = confirmation_match.group(2).strip()
         
-        # Pattern 6: Look for any sequence of capitalized words separated by commas
+        # Pattern 8: Look for any sequence of capitalized words separated by commas
         if not lang_string:
             lang_match = re.search(r'\b([A-Z][a-z]+(?:,\s*[A-Z][a-z]+)+)\b', text)
             if lang_match:
